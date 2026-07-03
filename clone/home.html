@@ -31,16 +31,18 @@
         margin: 0;
         height: 100%;
         width: 100%;
+        overflow: hidden;
         background: var(--bg);
         color: var(--ink);
         font-family: "IBM Plex Mono", system-ui, sans-serif;
       }
 
       .home {
-        min-height: 100dvh;
+        height: 100dvh;
         width: 100%;
         display: flex;
         flex-direction: column;
+        overflow: hidden;
         background:
           radial-gradient(60% 50% at 50% 0%, #fff0cf 0%, transparent 70%),
           var(--bg);
@@ -49,13 +51,19 @@
       /* top third: title + subtitle placeholder */
       .hero {
         flex: 1 1 33vh;
-        min-height: 220px;
+        min-height: 0;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         text-align: center;
         padding: 32px 24px 16px;
+        transition: flex-basis .35s ease, padding .35s ease;
+      }
+
+      .home.compact .hero {
+        flex: 0 1 auto;
+        padding: 18px 24px 4px;
       }
 
       .hero-title {
@@ -66,6 +74,11 @@
         letter-spacing: .02em;
         margin: 0;
         line-height: 1.05;
+        transition: font-size .35s ease;
+      }
+
+      .home.compact .hero-title {
+        font-size: clamp(22px, 4vw, 34px);
       }
 
       .hero-subtitle {
@@ -76,17 +89,31 @@
         letter-spacing: .18em;
         text-transform: uppercase;
         color: var(--muted);
+        opacity: 1;
+        overflow: hidden;
+        transition: opacity .2s ease, margin-top .35s ease, min-height .35s ease;
+      }
+
+      .home.compact .hero-subtitle {
+        opacity: 0;
+        margin-top: 0;
+        min-height: 0;
       }
 
       /* bottom two-thirds: character cards */
       .cards {
         flex: 2 1 67vh;
+        min-height: 0;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: clamp(12px, 2vw, 28px);
         padding: 16px clamp(16px, 4vw, 56px) clamp(24px, 5vh, 56px);
         flex-wrap: wrap;
+      }
+
+      .home.compact .cards {
+        flex: 1 1 auto;
       }
 
       .card {
@@ -97,8 +124,10 @@
         min-width: 150px;
         max-width: 230px;
         aspect-ratio: 3 / 4;
+        max-height: 1000px;
         perspective: 1400px;
-        transition: transform .2s ease, aspect-ratio .35s ease;
+        transition: transform .2s ease, aspect-ratio .4s ease,
+          flex-basis .4s ease, max-width .4s ease, max-height .4s ease;
       }
 
       .card:hover {
@@ -108,8 +137,9 @@
       .card.open {
         flex: 1 1 300px;
         min-width: 260px;
-        max-width: 320px;
+        max-width: min(320px, 92vw);
         aspect-ratio: 3 / 4.25;
+        max-height: min(62vh, 460px);
       }
 
       /* the piece that actually swivels */
@@ -142,7 +172,31 @@
         box-shadow: 0 1px 3px rgba(58, 69, 80, .08);
         backface-visibility: hidden;
         -webkit-backface-visibility: hidden;
+        overflow: hidden;
         transition: box-shadow .2s ease;
+      }
+
+      /* text fades out as its face turns away, and fades in only after
+         the card has rotated past the midpoint, so content never
+         appears to "pop" mid-swivel */
+      .card-face > * {
+        opacity: 1;
+        transition: opacity .22s ease .32s;
+      }
+
+      .card.open .card-front > * {
+        opacity: 0;
+        transition-delay: 0s;
+      }
+
+      .card-back > * {
+        opacity: 0;
+        transition-delay: 0s;
+      }
+
+      .card.open .card-back > * {
+        opacity: 1;
+        transition-delay: .32s;
       }
 
       .card:hover .card-face {
@@ -194,9 +248,9 @@
       }
 
       .card-back-desc {
-        font-size: 10.5px;
+        font-size: clamp(9px, 1.5vh, 10.5px);
         font-weight: 400;
-        line-height: 1.45;
+        line-height: 1.4;
         color: #1e1e1e;
         white-space: pre-line;
       }
@@ -274,8 +328,7 @@
         font-weight: 600;
         letter-spacing: .12em;
         text-transform: uppercase;
-        color: #1e1e1e;
-        opacity: .55;
+        color: rgba(30, 30, 30, .55);
       }
 
       @media (max-width: 720px) {
@@ -292,6 +345,7 @@
           max-width: none;
           min-width: 0;
           aspect-ratio: 3 / 4.4;
+          max-height: min(66vh, 420px);
         }
       }
     </style>
@@ -352,6 +406,12 @@
       ];
 
       const cardsEl = document.getElementById("cards");
+      const homeEl = document.querySelector(".home");
+
+      const updateCompact = () => {
+        const anyOpen = document.querySelector(".card.open") !== null;
+        homeEl.classList.toggle("compact", anyOpen);
+      };
 
       PERSONAS.forEach((persona) => {
         const initial = persona.title.replace("The ", "").charAt(0);
@@ -391,11 +451,7 @@
         const toggle = () => {
           const isOpen = card.classList.toggle("open");
           flip.setAttribute("aria-expanded", String(isOpen));
-          if (isOpen) {
-            window.setTimeout(() => {
-              card.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            }, 360);
-          }
+          updateCompact();
         };
         flip.addEventListener("click", toggle);
         flip.addEventListener("keydown", (e) => {
