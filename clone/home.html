@@ -90,18 +90,23 @@
       }
 
       .card {
-        --accent: var(--captain);
-        --accent-ring: var(--captain);
+        --card-bg: var(--surface);
+        --card-accent: var(--captain);
+        --card-on-accent: #fff;
         flex: 1 1 0;
-        min-width: 140px;
-        max-width: 220px;
+        min-width: 150px;
+        max-width: 230px;
         aspect-ratio: 3 / 4;
         perspective: 1400px;
-        transition: transform .2s ease;
+        transition: transform .2s ease, aspect-ratio .35s ease;
       }
 
       .card:hover {
         transform: translateY(-4px);
+      }
+
+      .card.open {
+        aspect-ratio: 3 / 8.6;
       }
 
       /* the piece that actually swivels */
@@ -128,19 +133,17 @@
         gap: 14px;
         padding: 18px;
         text-align: center;
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        box-shadow: 0 1px 3px rgba(58, 69, 80, .06);
+        background: var(--card-bg);
+        border: 1px solid rgba(0, 0, 0, .08);
+        border-radius: 14px;
+        box-shadow: 0 1px 3px rgba(58, 69, 80, .08);
         backface-visibility: hidden;
         -webkit-backface-visibility: hidden;
-        transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
+        transition: box-shadow .2s ease;
       }
 
       .card:hover .card-face {
-        border-color: var(--accent-ring);
-        background: var(--surface-up);
-        box-shadow: 0 10px 24px rgba(58, 69, 80, .14);
+        box-shadow: 0 10px 26px rgba(58, 69, 80, .2);
       }
 
       .card-face.card-back {
@@ -154,7 +157,7 @@
       }
 
       .card-face.card-back::-webkit-scrollbar-thumb {
-        background: var(--surface-up);
+        background: rgba(0, 0, 0, .15);
         border-radius: 2px;
       }
 
@@ -162,14 +165,14 @@
         width: 56px;
         height: 56px;
         border-radius: 50%;
-        border: 1px solid var(--border-hi);
-        background: var(--accent);
+        background: var(--card-accent);
         display: flex;
         align-items: center;
         justify-content: center;
-        color: var(--text-strong);
+        color: var(--card-on-accent);
+        font-family: Georgia, serif;
         font-size: 20px;
-        font-weight: 600;
+        font-weight: 700;
         transition: transform .2s ease;
         flex-shrink: 0;
       }
@@ -179,30 +182,63 @@
       }
 
       .card-name {
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: .1em;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: .08em;
         text-transform: uppercase;
-        color: var(--muted);
-      }
-
-      .card:hover .card-name {
-        color: var(--text-strong);
+        color: var(--card-accent);
       }
 
       .card-back-name {
         font-family: Georgia, serif;
-        font-size: 16px;
+        font-size: 17px;
         font-weight: 700;
-        color: var(--accent-ring);
-        margin-top: 6px;
+        letter-spacing: .01em;
+        text-transform: uppercase;
+        color: var(--card-accent);
+        margin-top: 4px;
       }
 
       .card-back-desc {
         font-size: 11px;
-        font-weight: 300;
+        font-weight: 400;
         line-height: 1.7;
-        color: var(--ink);
+        color: #1e1e1e;
+        white-space: pre-line;
+      }
+
+      .card-back-activities {
+        margin-top: 4px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .card-back-activities-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+        color: var(--card-accent);
+      }
+
+      .activity-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .activity-pill {
+        padding: 6px 10px;
+        border-radius: 14px;
+        background: var(--card-accent);
+        color: var(--card-on-accent);
+        font-size: 8.5px;
+        font-weight: 700;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+        white-space: nowrap;
       }
 
       .card-back-footer {
@@ -219,8 +255,8 @@
         display: inline-block;
         padding: 9px 22px;
         border-radius: 20px;
-        background: var(--tomato);
-        border: 1px solid var(--tomato);
+        background: #1e1e1e;
+        border: 1px solid #1e1e1e;
         color: #fff;
         font-family: "IBM Plex Mono", system-ui, sans-serif;
         font-size: 11px;
@@ -233,7 +269,7 @@
       }
 
       .begin-btn:hover {
-        box-shadow: 0 6px 18px rgba(239, 102, 70, .45);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
       }
 
       .begin-btn:active {
@@ -242,10 +278,11 @@
 
       .card-back-hint {
         font-size: 9px;
-        font-weight: 500;
+        font-weight: 600;
         letter-spacing: .12em;
         text-transform: uppercase;
-        color: var(--muted);
+        color: #1e1e1e;
+        opacity: .55;
       }
 
       @media (max-width: 720px) {
@@ -256,6 +293,10 @@
           flex: 1 1 40%;
           max-width: none;
           aspect-ratio: 4 / 3;
+        }
+        .card.open {
+          flex: 1 1 100%;
+          aspect-ratio: 3 / 6.2;
         }
       }
     </style>
@@ -271,33 +312,76 @@
     </div>
 
     <script>
-      const CARD_COUNT = 5;
-      const ACCENTS = [
-        { fill: "#FFD167", ring: "#B4872E" }, // pure sunshine
-        { fill: "#ADCFD0", ring: "#4D797A" }, // long days
-        { fill: "#5EABC9", ring: "#2E6E86" }, // sea
-        { fill: "#FDE4AE", ring: "#B08A3E" }, // buttered corn
-        { fill: "#EF6646", ring: "#C0492E" }, // ripe tomatoes
+      // from "personas descriptions.pdf"
+      const PERSONAS = [
+        {
+          title: "The Newcomer",
+          bg: "#ADCFD0",     // long days
+          accent: "#4360B0", // captain
+          onAccent: "#fff",
+          desc: "Welcome to Wolfsburg, the city with the iconic Volkswagen Factory!\n\nAre you here for the weekend? Exploring the city? Perhaps feeling a bit lost and not sure where to stay? Don't worry, you've come to the right place!\n\nThird Home is the perfect spot for Newcomers such as you :) Stay here for days, weeks or even months! We also have all kinds of social events for you to take part in, are you interested?",
+          activities: ["Open Studios", "Playrooms", "Workshops", "Cafe / Bar"],
+        },
+        {
+          title: "Artist-Curator",
+          bg: "#EF6646",     // ripe tomatoes
+          accent: "#FDE4AE", // buttered corn
+          onAccent: "#3A2A12",
+          desc: "A new talent in town! Welcome to Wolfsburg :)\n\nLooking for a space to showcase your art? Third Home is not just a place for living but also a space for people like you who are looking for co-working or exhibition and workshop spaces.\n\nWhat's a better way to meet new people and, possibly, new fans of your work? Host events and find the right crowd to display your pieces! Be the light that shines Third Home <3",
+          activities: ["Co-Working", "Performance", "Workshops", "Exhibition"],
+        },
+        {
+          title: "The Retiree",
+          bg: "#FFD167",     // pure sunshine
+          accent: "#EF6646", // ripe tomatoes
+          onAccent: "#fff",
+          desc: "How's it going, Legend? What are your plans for today?\n\nHave you heard of this place, Third Home? I suddenly have this urge to play chess with you, finally see who's the better player. What do you say? Ready to lose, old man?\n\nThey have more than Playrooms, you know. They have a very impressive gnome collection in their gardens, which I'm sure you'd love to see. We could also grab a beeeeeer!",
+          activities: ["Retreat", "Playrooms", "Gardening", "Cafe / Bar"],
+        },
+        {
+          title: "The Urban Wanderer",
+          bg: "#4360B0",     // captain
+          accent: "#FFD167", // pure sunshine
+          onAccent: "#3A2A12",
+          desc: "Where did you go this weekend? City hopping can be fun, but what about Wolfsburg itself? You have to explore the city you live in!\n\nAre you free next weekend, though? Let's mix it up. Third Home has so many events going on this month. There's an exhibition on mass printing and they are screening “2001: A Space Odyssey”. They also have a yoga studio on Thursday evenings. Or we could go there right now and take our work with us. They have a great cafe too :)",
+          activities: ["Open Studios", "Co-Working", "Terraces", "Exhibition"],
+        },
+        {
+          title: "Volkswagen Worker",
+          bg: "#FDE4AE",     // buttered corn
+          accent: "#5EABC9", // sea
+          onAccent: "#fff",
+          desc: "You look like you need a breather :/ that bad, huh? Well, not to fret. Even though you work odd shift times at the Volkswagen factory, there is a place for you to unwind :)\n\nThird Home is open 24/7. It includes quiet lounging spaces, private terraces and beautiful gardens. But if you still have the energy, there are always events taking place, even at this hour! Do you know Salsa? Or what if we booked a space to have a karaoke night! The fun is endless.",
+          activities: ["Performance", "Terraces", "Gardening", "Retreat"],
+        },
       ];
+
       const cardsEl = document.getElementById("cards");
 
-      for (let i = 1; i <= CARD_COUNT; i++) {
-        const label = `Character 0${i}`;
-        const accent = ACCENTS[i - 1];
+      PERSONAS.forEach((persona) => {
+        const initial = persona.title.replace("The ", "").charAt(0);
+        const activityPills = persona.activities
+          .map((a) => `<div class="activity-pill">${a}</div>`)
+          .join("");
 
         const card = document.createElement("div");
         card.className = "card";
-        card.style.setProperty("--accent", accent.fill);
-        card.style.setProperty("--accent-ring", accent.ring);
+        card.style.setProperty("--card-bg", persona.bg);
+        card.style.setProperty("--card-accent", persona.accent);
+        card.style.setProperty("--card-on-accent", persona.onAccent);
         card.innerHTML = `
-          <div class="card-flip" role="button" tabindex="0" aria-expanded="false" aria-label="${label}">
+          <div class="card-flip" role="button" tabindex="0" aria-expanded="false" aria-label="${persona.title}">
             <div class="card-face card-front">
-              <div class="card-avatar">?</div>
-              <div class="card-name">${label}</div>
+              <div class="card-avatar">${initial}</div>
+              <div class="card-name">${persona.title}</div>
             </div>
             <div class="card-face card-back">
-              <div class="card-back-name">${label}</div>
-              <div class="card-back-desc">Description coming soon. This is where the character's story and role in Third Home will appear.</div>
+              <div class="card-back-name">${persona.title}</div>
+              <div class="card-back-desc">${persona.desc}</div>
+              <div class="card-back-activities">
+                <div class="card-back-activities-label">Suggested Activities</div>
+                <div class="activity-grid">${activityPills}</div>
+              </div>
               <div class="card-back-footer">
                 <a class="begin-btn" href="index.html">Let's Begin!</a>
                 <div class="card-back-hint">Tap card to close</div>
@@ -322,7 +406,7 @@
         });
         beginBtn.addEventListener("click", (e) => e.stopPropagation());
         beginBtn.addEventListener("keydown", (e) => e.stopPropagation());
-      }
+      });
     </script>
   </body>
 </html>
