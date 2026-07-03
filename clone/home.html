@@ -7,17 +7,22 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
       :root {
-        --bg: #080C1A;
-        --surface: #0F1628;
-        --surface-up: #19253E;
-        --border: rgba(255, 255, 255, .07);
-        --border-hi: rgba(255, 255, 255, .16);
-        --pink: #F72585;
-        --yellow: #FFE600;
-        --cyan: #4CC9F0;
-        --text: #D8E0FF;
-        --text-strong: #FFFFFF;
-        --muted: #5A6A92;
+        /* colour scheme.png */
+        --sunshine: #FFD167;
+        --long-days: #ADCFD0;
+        --captain: #4360B0;
+        --buttered-corn: #FDE4AE;
+        --sea: #5EABC9;
+        --tomato: #EF6646;
+
+        --bg: #FFFCF6;
+        --surface: #FFFFFF;
+        --surface-up: #FFF7E8;
+        --border: #EBE1CC;
+        --border-hi: #DCCFAF;
+        --ink: #3A4550;
+        --muted: #8A8577;
+        --text-strong: #232830;
       }
 
       * { box-sizing: border-box; }
@@ -27,7 +32,7 @@
         height: 100%;
         width: 100%;
         background: var(--bg);
-        color: var(--text);
+        color: var(--ink);
         font-family: "IBM Plex Mono", system-ui, sans-serif;
       }
 
@@ -37,7 +42,7 @@
         display: flex;
         flex-direction: column;
         background:
-          radial-gradient(60% 50% at 50% 0%, #101c3a 0%, transparent 70%),
+          radial-gradient(60% 50% at 50% 0%, #fff0cf 0%, transparent 70%),
           var(--bg);
       }
 
@@ -56,7 +61,7 @@
       .hero-title {
         font-family: Georgia, serif;
         font-weight: 700;
-        color: var(--yellow);
+        color: var(--captain);
         font-size: clamp(40px, 7vw, 84px);
         letter-spacing: .02em;
         margin: 0;
@@ -85,6 +90,8 @@
       }
 
       .card {
+        --accent: var(--captain);
+        --accent-ring: var(--captain);
         flex: 1 1 0;
         min-width: 140px;
         max-width: 220px;
@@ -124,14 +131,16 @@
         background: var(--surface);
         border: 1px solid var(--border);
         border-radius: 10px;
+        box-shadow: 0 1px 3px rgba(58, 69, 80, .06);
         backface-visibility: hidden;
         -webkit-backface-visibility: hidden;
-        transition: border-color .2s ease, background .2s ease;
+        transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
       }
 
       .card:hover .card-face {
-        border-color: var(--border-hi);
+        border-color: var(--accent-ring);
         background: var(--surface-up);
+        box-shadow: 0 10px 24px rgba(58, 69, 80, .14);
       }
 
       .card-face.card-back {
@@ -154,19 +163,19 @@
         height: 56px;
         border-radius: 50%;
         border: 1px solid var(--border-hi);
-        background: var(--surface-up);
+        background: var(--accent);
         display: flex;
         align-items: center;
         justify-content: center;
-        color: var(--muted);
+        color: var(--text-strong);
         font-size: 20px;
-        transition: color .2s ease, border-color .2s ease;
+        font-weight: 600;
+        transition: transform .2s ease;
         flex-shrink: 0;
       }
 
       .card:hover .card-avatar {
-        color: var(--cyan);
-        border-color: var(--cyan);
+        transform: scale(1.06);
       }
 
       .card-name {
@@ -185,7 +194,7 @@
         font-family: Georgia, serif;
         font-size: 16px;
         font-weight: 700;
-        color: var(--yellow);
+        color: var(--accent-ring);
         margin-top: 6px;
       }
 
@@ -193,7 +202,7 @@
         font-size: 11px;
         font-weight: 300;
         line-height: 1.7;
-        color: var(--text);
+        color: var(--ink);
       }
 
       .card-back-footer {
@@ -210,8 +219,8 @@
         display: inline-block;
         padding: 9px 22px;
         border-radius: 20px;
-        background: var(--pink);
-        border: 1px solid var(--pink);
+        background: var(--tomato);
+        border: 1px solid var(--tomato);
         color: #fff;
         font-family: "IBM Plex Mono", system-ui, sans-serif;
         font-size: 11px;
@@ -224,7 +233,7 @@
       }
 
       .begin-btn:hover {
-        box-shadow: 0 0 18px rgba(247, 37, 133, .55);
+        box-shadow: 0 6px 18px rgba(239, 102, 70, .45);
       }
 
       .begin-btn:active {
@@ -263,13 +272,23 @@
 
     <script>
       const CARD_COUNT = 5;
+      const ACCENTS = [
+        { fill: "#FFD167", ring: "#B4872E" }, // pure sunshine
+        { fill: "#ADCFD0", ring: "#4D797A" }, // long days
+        { fill: "#5EABC9", ring: "#2E6E86" }, // sea
+        { fill: "#FDE4AE", ring: "#B08A3E" }, // buttered corn
+        { fill: "#EF6646", ring: "#C0492E" }, // ripe tomatoes
+      ];
       const cardsEl = document.getElementById("cards");
 
       for (let i = 1; i <= CARD_COUNT; i++) {
         const label = `Character 0${i}`;
+        const accent = ACCENTS[i - 1];
 
         const card = document.createElement("div");
         card.className = "card";
+        card.style.setProperty("--accent", accent.fill);
+        card.style.setProperty("--accent-ring", accent.ring);
         card.innerHTML = `
           <div class="card-flip" role="button" tabindex="0" aria-expanded="false" aria-label="${label}">
             <div class="card-face card-front">
