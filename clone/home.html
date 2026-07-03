@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Third Home</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --bg: #080C1A;
+        --surface: #0F1628;
+        --surface-up: #19253E;
+        --border: rgba(255, 255, 255, .07);
+        --border-hi: rgba(255, 255, 255, .16);
+        --pink: #F72585;
+        --yellow: #FFE600;
+        --cyan: #4CC9F0;
+        --text: #D8E0FF;
+        --text-strong: #FFFFFF;
+        --muted: #5A6A92;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+        width: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "IBM Plex Mono", system-ui, sans-serif;
+      }
+
+      .home {
+        min-height: 100dvh;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        background:
+          radial-gradient(60% 50% at 50% 0%, #101c3a 0%, transparent 70%),
+          var(--bg);
+      }
+
+      /* top third: title + subtitle placeholder */
+      .hero {
+        flex: 1 1 33vh;
+        min-height: 220px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 32px 24px 16px;
+      }
+
+      .hero-title {
+        font-family: Georgia, serif;
+        font-weight: 700;
+        color: var(--yellow);
+        font-size: clamp(40px, 7vw, 84px);
+        letter-spacing: .02em;
+        margin: 0;
+        line-height: 1.05;
+      }
+
+      .hero-subtitle {
+        margin-top: 18px;
+        min-height: 1.6em;
+        font-size: 12px;
+        font-weight: 300;
+        letter-spacing: .18em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      /* bottom two-thirds: character cards */
+      .cards {
+        flex: 2 1 67vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: clamp(12px, 2vw, 28px);
+        padding: 16px clamp(16px, 4vw, 56px) clamp(24px, 5vh, 56px);
+        flex-wrap: wrap;
+      }
+
+      .card {
+        flex: 1 1 0;
+        min-width: 140px;
+        max-width: 220px;
+        aspect-ratio: 3 / 4;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        transition: border-color .2s ease, transform .2s ease, background .2s ease;
+      }
+
+      .card:hover {
+        border-color: var(--border-hi);
+        background: var(--surface-up);
+        transform: translateY(-4px);
+      }
+
+      .card-avatar {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        border: 1px solid var(--border-hi);
+        background: var(--surface-up);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-size: 20px;
+        transition: color .2s ease, border-color .2s ease;
+      }
+
+      .card:hover .card-avatar {
+        color: var(--cyan);
+        border-color: var(--cyan);
+      }
+
+      .card-name {
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .card:hover .card-name {
+        color: var(--text-strong);
+      }
+
+      @media (max-width: 720px) {
+        .cards {
+          flex-wrap: wrap;
+        }
+        .card {
+          flex: 1 1 40%;
+          max-width: none;
+          aspect-ratio: 4 / 3;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="home">
+      <section class="hero">
+        <h1 class="hero-title">Third Home</h1>
+        <p class="hero-subtitle" id="subtitle"></p>
+      </section>
+
+      <section class="cards" id="cards"></section>
+    </div>
+
+    <script>
+      const CARD_COUNT = 5;
+      const cardsEl = document.getElementById("cards");
+
+      for (let i = 1; i <= CARD_COUNT; i++) {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <div class="card-avatar">?</div>
+          <div class="card-name">Character 0${i}</div>
+        `;
+        cardsEl.appendChild(card);
+      }
+    </script>
+  </body>
+</html>
