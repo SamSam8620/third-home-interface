@@ -449,8 +449,16 @@
         const flip = card.querySelector(".card-flip");
         const beginBtn = card.querySelector(".begin-btn");
         const toggle = () => {
-          const isOpen = card.classList.toggle("open");
-          flip.setAttribute("aria-expanded", String(isOpen));
+          const willOpen = !card.classList.contains("open");
+          if (willOpen) {
+            cardsEl.querySelectorAll(".card.open").forEach((openCard) => {
+              if (openCard === card) return;
+              openCard.classList.remove("open");
+              openCard.querySelector(".card-flip").setAttribute("aria-expanded", "false");
+            });
+          }
+          card.classList.toggle("open", willOpen);
+          flip.setAttribute("aria-expanded", String(willOpen));
           updateCompact();
         };
         flip.addEventListener("click", toggle);
