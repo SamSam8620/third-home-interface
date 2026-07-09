@@ -4003,12 +4003,495 @@ const DW_FUNCTION_DESC={
 };
 const BW_FLOORS=["floor 1","floor 2","floor 3"];
 const DW_FLOORS=["floor 1","floor 2","floor 3","floor 4","floor 5"];
-function BookingFlow({cells,floor,floorIdx,clearCells,guestName,setGuestName,onConfirm}){
+// === consts ===
+const DW_ZONES=[
+  {id:"floor1",name:"Floor 1",persona:"The Loudest Floor",tagline:"Power tools, footsteps, and a crowd that never quite quiets down.",tags_fit:["performance","recreation","workshop","open-studio"],tags_conflict:["retreat","gardening"]},
+  {id:"floor2",name:"Floor 2",persona:"The Darkest Floor",tagline:"Low light, hushed corners — built for retreat, not for growing things.",tags_fit:["retreat"],tags_conflict:["gardening","open-studio","co-working"]},
+  {id:"floor3",name:"Floor 3",persona:"Neutral",tagline:"No strong opinions here. Anything fits.",tags_fit:["co-working","terraces"],tags_conflict:[]},
+  {id:"floor4",name:"Floor 4",persona:"Neutral",tagline:"No strong opinions here. Anything fits.",tags_fit:["co-working","terraces"],tags_conflict:[]},
+  {id:"floor5",name:"Floor 5",persona:"Hottest Floor + Best View",tagline:"Top of the building, full sun, the best seat in the house.",tags_fit:["cafe-bar","terraces"],tags_conflict:[]},
+  {id:"ground",name:"Ground Floor",persona:"Neutral",tagline:"The welcoming floor. Open to whatever comes through the door.",tags_fit:["co-working","terraces"],tags_conflict:[]},
+  {id:"south-facade",name:"South Façade",persona:"The Green Wall",tagline:"Wherever it climbs, it wants quiet and light — not noise and tools.",tags_fit:["gardening","terraces"],tags_conflict:["performance","recreation","workshop","open-studio"]}
+];
+const DW_CHALLENGE_FUNCTIONS=[
+  {id:"co-working",label:"Co-working"},
+  {id:"performance",label:"Performance (Dancing, Singing, Band)"},
+  {id:"recreation",label:"Recreation / Playrooms"},
+  {id:"retreat",label:"Retreat (Quiet Lounging)"},
+  {id:"workshop",label:"Workshop (Wood, Metal, Pottery)"},
+  {id:"exhibition",label:"Exhibition"},
+  {id:"terraces",label:"Terraces (Multi-level Seating)"},
+  {id:"gardening",label:"Gardening"},
+  {id:"open-studio",label:"Open Studios (Dancing, Yoga, Workout)"},
+  {id:"cafe-bar",label:"Café / Bar"}
+];
+const DW_FUNC_ID_MAP={"Co-Working":"co-working","Performance":"performance","Recreation":"recreation","Retreat":"retreat","Workshop":"workshop","Exhibition":"exhibition","Terraces":"terraces","Gardening":"gardening","Open Studios":"open-studio","Cafe / Bar":"cafe-bar"};
+const DW_FIT_LINES={
+  "floor1|performance":"Floor 1 approves — this crowd's ready to make some noise.",
+  "floor1|recreation":"Floor 1 approves — games and a little chaos, right at home here.",
+  "floor1|workshop":"Floor 1 approves — saws, sanders, hammers. Bring it on.",
+  "floor1|open-studio":"Floor 1 approves — movement and music fit right in.",
+  "floor2|retreat":"The Darkest Floor exhales. Finally, some quiet.",
+  "floor3|co-working":"Floor 3 has no objections. Get to it.",
+  "floor3|terraces":"Floor 3 has no objections. Get to it.",
+  "floor4|co-working":"Floor 4 has no objections. Get to it.",
+  "floor4|terraces":"Floor 4 has no objections. Get to it.",
+  "floor5|cafe-bar":"Best view in the building, and now the best coffee too.",
+  "floor5|terraces":"Best view in the building — pull up a chair and enjoy it.",
+  "ground|co-working":"Ground floor, no complaints. Come on in.",
+  "ground|terraces":"Ground floor, no complaints. Come on in.",
+  "south-facade|gardening":"The Green Wall lights up — this is exactly its kind of space.",
+  "south-facade|terraces":"The Green Wall lights up — a good perch for something green nearby."
+};
+const DW_CONFLICT_LINES={
+  "floor1|retreat":"The Loudest Floor isn't exactly built for quiet lounging — hope you don't mind noise.",
+  "floor1|gardening":"The Loudest Floor isn't big on plants — between the noise and foot traffic, growing things here is a stretch.",
+  "floor2|gardening":"The Darkest Floor isn't big on plants — gardening needs light this floor doesn't get.",
+  "floor2|open-studio":"The Darkest Floor is dim by design — dancing and yoga usually want more light than this.",
+  "floor2|co-working":"The Darkest Floor is built for retreat, not desks and deadlines.",
+  "south-facade|performance":"The Green Wall prefers quiet. A performance space might not be the vibe here.",
+  "south-facade|recreation":"The Green Wall prefers quiet. A recreation space full of noise might not be the vibe here.",
+  "south-facade|workshop":"The Green Wall prefers quiet. A workshop full of power tools might not be the vibe here.",
+  "south-facade|open-studio":"The Green Wall prefers quiet. A studio full of movement and music might not be the vibe here."
+};
+const DW_AUDIO_LAYERS_FLOOR1=[
+  {id:"performance",label:"Distant performance / vocal",src:"./assets/audio/floor1-performance.mp3",vol:.24,delay:0},
+  {id:"crowd",label:"Crowd murmur",src:"./assets/audio/floor1-crowd.mp3",vol:.42,delay:1300},
+  {id:"traffic",label:"Traffic hum",src:"./assets/audio/floor1-traffic.mp3",vol:.36,delay:2600}
+];
+// === functions ===
+function DW_floorLabelToZoneId(floorLabel){
+  if(!floorLabel)return null;
+  if(floorLabel==="Floor G")return"ground";
+  return floorLabel.replace(" ","")
+}
+function ChallengeCheck(zoneId,functionId){
+  const zone=DW_ZONES.find(z=>z.id===zoneId);
+  if(!zone||!functionId)return{status:"neutral",message:""};
+  const key=zoneId+"|"+functionId;
+  if(zone.tags_conflict.includes(functionId))return{status:"conflict",message:DW_CONFLICT_LINES[key]||(zone.persona+" isn't thrilled about this pairing — you can still go ahead if you like.")};
+  if(zone.tags_fit.includes(functionId))return{status:"fit",message:DW_FIT_LINES[key]||(zone.persona+" approves of this pick.")};
+  return{status:"neutral",message:""}
+}
+function DW_computeFootprint(model){
+  if(!model)return null;
+  const parts=model.parts||(model.position?[{position:model.position}]:null);
+  if(!parts||!parts.length)return null;
+  let minX=1/0,maxX=-1/0,minZ=1/0,maxZ=-1/0,count=0;
+  for(let pi=0;pi<parts.length;pi++){
+    const pos=parts[pi]&&parts[pi].position;
+    if(!pos||!pos.length)continue;
+    count++;
+    const triples=Math.floor(pos.length/3);
+    const stride=Math.max(1,Math.floor(triples/24))*3;
+    for(let i=0;i+2<pos.length;i+=stride){
+      const x=pos[i],z=pos[i+2];
+      if(x<minX)minX=x;if(x>maxX)maxX=x;
+      if(z<minZ)minZ=z;if(z>maxZ)maxZ=z;
+    }
+  }
+  if(!isFinite(minX)||!isFinite(maxX))return null;
+  return{width:Math.max(0,maxX-minX),depth:Math.max(0,maxZ-minZ),parts:count};
+}
+function DW_computeCenter(parts){
+  if(!parts||!parts.length)return[0,0,0];
+  let minX=1/0,maxX=-1/0,minY=1/0,maxY=-1/0,minZ=1/0,maxZ=-1/0;
+  for(let pi=0;pi<parts.length;pi++){
+    const pos=parts[pi]&&parts[pi].position;
+    if(!pos)continue;
+    for(let i=0;i+2<pos.length;i+=3){
+      const x=pos[i],y=pos[i+1],z=pos[i+2];
+      if(x<minX)minX=x;if(x>maxX)maxX=x;
+      if(y<minY)minY=y;if(y>maxY)maxY=y;
+      if(z<minZ)minZ=z;if(z>maxZ)maxZ=z;
+    }
+  }
+  if(!isFinite(minX))return[0,0,0];
+  return[(minX+maxX)/2,(minY+maxY)/2,(minZ+maxZ)/2]
+}
+function ScrambleText({text,className}){
+  const[display,setDisplay]=j.useState(text);
+  j.useEffect(()=>{
+    const glyphs="█▓▒░/\\|—+*#?§¤";
+    const chars=text.split("");
+    const HOLD=1350,BREAK=380,CHAOS=260,EMERGE=680;
+    const CYCLE=HOLD+BREAK+CHAOS+EMERGE;
+    const t0=performance.now();
+    const id=setInterval(()=>{
+      const t=(performance.now()-t0)%CYCLE;
+      let out;
+      if(t<HOLD){
+        out=text
+      }else if(t<HOLD+BREAK){
+        const p=(t-HOLD)/BREAK,n=Math.floor(p*chars.length);
+        out=chars.map((c,i)=>c===" "?" ":i<n?glyphs[Math.floor(Math.random()*glyphs.length)]:c).join("")
+      }else if(t<HOLD+BREAK+CHAOS){
+        out=chars.map(c=>c===" "?" ":glyphs[Math.floor(Math.random()*glyphs.length)]).join("")
+      }else{
+        const p=(t-HOLD-BREAK-CHAOS)/EMERGE,n=Math.floor(p*chars.length);
+        out=chars.map((c,i)=>c===" "?" ":i<n?c:glyphs[Math.floor(Math.random()*glyphs.length)]).join("")
+      }
+      setDisplay(out)
+    },70);
+    return()=>clearInterval(id)
+  },[text]);
+  return k.jsx("span",{className:className,children:display})
+}
+function DarkFloorAmbience({floorLabel}){
+  const active=DW_floorLabelToZoneId(floorLabel)==="floor2";
+  const[mounted,setMounted]=j.useState(!1);
+  const[visible,setVisible]=j.useState(!1);
+  const timerRef=j.useRef(null);
+  const rafRef=j.useRef(null);
+  j.useEffect(()=>{
+    if(timerRef.current){clearTimeout(timerRef.current);timerRef.current=null}
+    if(rafRef.current){cancelAnimationFrame(rafRef.current);rafRef.current=null}
+    if(active){
+      setMounted(!0);
+      rafRef.current=requestAnimationFrame(()=>{
+        rafRef.current=requestAnimationFrame(()=>setVisible(!0))
+      })
+    }else{
+      setVisible(!1);
+      timerRef.current=setTimeout(()=>setMounted(!1),700)
+    }
+    return()=>{
+      if(timerRef.current)clearTimeout(timerRef.current);
+      if(rafRef.current)cancelAnimationFrame(rafRef.current)
+    }
+  },[active]);
+  if(!mounted)return null;
+  const zone=DW_ZONES.find(z=>z.id==="floor2");
+  const fitLine=DW_FIT_LINES["floor2|retreat"]||"";
+  return KA.createPortal(k.jsxs("div",{className:"dfa-wrap"+(visible?" dfa-in":""),children:[
+    k.jsx("div",{className:"dfa-wash"},"w"),
+    k.jsx("div",{className:"dfa-shadow-mass dfa-shadow-mass-1"},"s1"),
+    k.jsx("div",{className:"dfa-shadow-mass dfa-shadow-mass-2"},"s2"),
+    k.jsx("div",{className:"dfa-glow"},"g"),
+    k.jsxs("div",{className:"dfa-legend",children:[
+      k.jsxs("div",{className:"dfa-legend-head",children:[
+        k.jsx("span",{className:"dfa-beacon"},"b"),
+        k.jsx("span",{className:"dfa-legend-title",children:zone.persona},"t")
+      ]},"head"),
+      k.jsxs("div",{className:"dfa-legend-row dfa-fit",children:[
+        k.jsx("span",{className:"dfa-dot"},"d"),
+        k.jsxs("div",{className:"dfa-legend-col",children:[
+          k.jsx(ScrambleText,{className:"dfa-scramble",text:"Fits here — "+zone.tags_fit.map(id=>DW_FUNC_ID_TO_SHORT[id]||id).join(", ")},"l"),
+          k.jsx("div",{className:"dfa-legend-detail",children:fitLine},"det")
+        ]},"col")
+      ]},"fit"),
+      k.jsxs("div",{className:"dfa-legend-row dfa-conflict",children:[
+        k.jsx("span",{className:"dfa-dot"},"d"),
+        k.jsx(ScrambleText,{className:"dfa-scramble",text:"Not ideal — "+zone.tags_conflict.map(id=>DW_FUNC_ID_TO_SHORT[id]||id).join(", ")},"l")
+      ]},"con")
+    ]},"legend")
+  ]},"dfa"),document.body)
+}
+function LoudFloorAmbience({floorLabel}){
+  const active=DW_floorLabelToZoneId(floorLabel)==="floor1";
+  const[mounted,setMounted]=j.useState(!1);
+  const[visible,setVisible]=j.useState(!1);
+  const timerRef=j.useRef(null);
+  const rafRef=j.useRef(null);
+  j.useEffect(()=>{
+    if(timerRef.current){clearTimeout(timerRef.current);timerRef.current=null}
+    if(rafRef.current){cancelAnimationFrame(rafRef.current);rafRef.current=null}
+    if(active){DW_audioFadeIn()}else{DW_audioStopNow()}
+    if(active){
+      setMounted(!0);
+      rafRef.current=requestAnimationFrame(()=>{
+        rafRef.current=requestAnimationFrame(()=>setVisible(!0))
+      })
+    }else{
+      setVisible(!1);
+      timerRef.current=setTimeout(()=>setMounted(!1),700)
+    }
+    return()=>{
+      if(timerRef.current)clearTimeout(timerRef.current);
+      if(rafRef.current)cancelAnimationFrame(rafRef.current)
+    }
+  },[active]);
+  if(!mounted)return null;
+  const zone=DW_ZONES.find(z=>z.id==="floor1");
+  const fitLine=DW_FIT_LINES["floor1|performance"]||"";
+  return KA.createPortal(k.jsxs("div",{className:"lfa-wrap"+(visible?" lfa-in":""),children:[
+    k.jsx("div",{className:"lfa-wash"},"w"),
+    k.jsx("div",{className:"lfa-ripple lfa-ripple-1"},"r1"),
+    k.jsx("div",{className:"lfa-ripple lfa-ripple-2"},"r2"),
+    k.jsx("div",{className:"lfa-ripple lfa-ripple-3"},"r3"),
+    k.jsxs("div",{className:"lfa-legend",children:[
+      k.jsxs("div",{className:"lfa-legend-head",children:[
+        k.jsx("span",{className:"lfa-beacon"},"b"),
+        k.jsx("span",{className:"lfa-legend-title",children:zone.persona},"t")
+      ]},"head"),
+      k.jsxs("div",{className:"lfa-legend-row lfa-fit",children:[
+        k.jsx("span",{className:"lfa-dot"},"d"),
+        k.jsxs("div",{className:"lfa-legend-col",children:[
+          k.jsx(ScrambleText,{className:"lfa-scramble",text:"Fits here — "+zone.tags_fit.map(id=>DW_FUNC_ID_TO_SHORT[id]||id).join(", ")},"l"),
+          k.jsx("div",{className:"lfa-legend-detail",children:fitLine},"det")
+        ]},"col")
+      ]},"fit"),
+      k.jsxs("div",{className:"lfa-legend-row lfa-conflict",children:[
+        k.jsx("span",{className:"lfa-dot"},"d"),
+        k.jsx(ScrambleText,{className:"lfa-scramble",text:"Not ideal — "+zone.tags_conflict.map(id=>DW_FUNC_ID_TO_SHORT[id]||id).join(", ")},"l")
+      ]},"con")
+    ]},"legend")
+  ]},"lfa"),document.body)
+}
+function HotFloorAmbience({floorLabel}){
+  const active=DW_floorLabelToZoneId(floorLabel)==="floor5";
+  const[mounted,setMounted]=j.useState(!1);
+  const[visible,setVisible]=j.useState(!1);
+  const timerRef=j.useRef(null);
+  const rafRef=j.useRef(null);
+  j.useEffect(()=>{
+    if(timerRef.current){clearTimeout(timerRef.current);timerRef.current=null}
+    if(rafRef.current){cancelAnimationFrame(rafRef.current);rafRef.current=null}
+    if(active){
+      setMounted(!0);
+      rafRef.current=requestAnimationFrame(()=>{
+        rafRef.current=requestAnimationFrame(()=>setVisible(!0))
+      })
+    }else{
+      setVisible(!1);
+      timerRef.current=setTimeout(()=>setMounted(!1),700)
+    }
+    return()=>{
+      if(timerRef.current)clearTimeout(timerRef.current);
+      if(rafRef.current)cancelAnimationFrame(rafRef.current)
+    }
+  },[active]);
+  if(!mounted)return null;
+  const zone=DW_ZONES.find(z=>z.id==="floor5");
+  const fitLine=DW_FIT_LINES["floor5|cafe-bar"]||"";
+  return KA.createPortal(k.jsxs("div",{className:"hfa-wrap"+(visible?" hfa-in":""),children:[
+    k.jsx("div",{className:"hfa-wash"},"w"),
+    k.jsx("div",{className:"hfa-shimmer"},"sh"),
+    k.jsx("div",{className:"hfa-dust hfa-dust-1"},"d1"),
+    k.jsx("div",{className:"hfa-dust hfa-dust-2"},"d2"),
+    k.jsx("div",{className:"hfa-dust hfa-dust-3"},"d3"),
+    k.jsx("div",{className:"hfa-sun-flare"},"sun"),
+    k.jsxs("div",{className:"hfa-legend",children:[
+      k.jsxs("div",{className:"hfa-legend-head",children:[
+        k.jsx("span",{className:"hfa-beacon"},"b"),
+        k.jsx("span",{className:"hfa-legend-title",children:zone.persona},"t")
+      ]},"head"),
+      k.jsxs("div",{className:"hfa-legend-row hfa-fit",children:[
+        k.jsx("span",{className:"hfa-dot"},"d"),
+        k.jsxs("div",{className:"hfa-legend-col",children:[
+          k.jsx(ScrambleText,{className:"hfa-scramble",text:"Fits here — "+zone.tags_fit.map(id=>DW_FUNC_ID_TO_SHORT[id]||id).join(", ")},"l"),
+          k.jsx("div",{className:"hfa-legend-detail",children:fitLine},"det")
+        ]},"col")
+      ]},"fit"),
+      zone.tags_conflict.length>0&&k.jsxs("div",{className:"hfa-legend-row hfa-conflict",children:[
+        k.jsx("span",{className:"hfa-dot"},"d"),
+        k.jsx(ScrambleText,{className:"hfa-scramble",text:"Not ideal — "+zone.tags_conflict.map(id=>DW_FUNC_ID_TO_SHORT[id]||id).join(", ")},"l")
+      ]},"con")
+    ]},"legend")
+  ]},"hfa"),document.body)
+}
+function FloorExperienceOverlay({floorLabel}){
+  const[shown,setShown]=j.useState(null);
+  const firstRun=j.useRef(!0);
+  const hideTimer=j.useRef(null);
+  j.useEffect(()=>{
+    if(firstRun.current){firstRun.current=!1;return}
+    if(hideTimer.current){clearTimeout(hideTimer.current);hideTimer.current=null}
+    const zoneId=DW_floorLabelToZoneId(floorLabel);
+    const zone=DW_ZONES.find(z=>z.id===zoneId);
+    if(!zone){setShown(null);return}
+    setShown({zone,key:floorLabel+"|"+Date.now()});
+    hideTimer.current=setTimeout(()=>setShown(null),4000);
+    return()=>{if(hideTimer.current)clearTimeout(hideTimer.current)}
+  },[floorLabel]);
+  if(!shown)return null;
+  const z=shown.zone;
+  return KA.createPortal(k.jsxs("div",{className:"fx-overlay fx-mood-"+z.id,key:shown.key,children:[
+    k.jsx("div",{className:"fx-vignette"},"v"),
+    k.jsxs("div",{className:"fx-content",children:[
+      k.jsx("div",{className:"fx-zone-name",children:z.name},"n"),
+      k.jsx("div",{className:"fx-persona",children:z.persona},"p"),
+      k.jsx("div",{className:"fx-tagline",children:z.tagline},"t")
+    ]},"c")
+  ]},"fx"),document.body)
+}
+function DW_HeatFilterDefs(){
+  return k.jsx("svg",{"aria-hidden":"true",style:{position:"absolute",width:0,height:0,overflow:"hidden"},children:k.jsx("defs",{children:k.jsxs("filter",{id:"dw-heat-warp",x:"-20%",y:"-20%",width:"140%",height:"140%",children:[
+    k.jsxs("feTurbulence",{type:"fractalNoise",baseFrequency:"0.006 0.018",numOctaves:"2",seed:"3",result:"dwTurb",children:[
+      k.jsx("animate",{attributeName:"baseFrequency",values:"0.006 0.018;0.009 0.013;0.006 0.018",dur:"7s",repeatCount:"indefinite"},"a")
+    ]},"turb"),
+    k.jsx("feDisplacementMap",{in:"SourceGraphic",in2:"dwTurb",scale:"9",xChannelSelector:"R",yChannelSelector:"G"},"disp")
+  ]},"filter")},"defs")},"svg")
+}
+let DW_audioState=null;
+function DW_getAudioState(){
+  if(DW_audioState)return DW_audioState;
+  const layers=DW_AUDIO_LAYERS_FLOOR1.map(l=>{
+    const el=new Audio(l.src);
+    el.loop=!0;
+    el.preload="auto";
+    el.volume=0;
+    return{...l,el,fadeRaf:null};
+  });
+  DW_audioState={layers,primed:!1,muted:!1,fadeTimers:[]};
+  return DW_audioState
+}
+function DW_primeAudio(){
+  const st=DW_getAudioState();
+  if(st.primed)return;
+  st.primed=!0;
+  st.layers.forEach(l=>{
+    const p=l.el.play();
+    if(p&&p.then)p.then(()=>l.el.pause()).catch(()=>{})
+  })
+}
+function DW_audioFadeIn(){
+  const st=DW_getAudioState();
+  st.fadeTimers.forEach(id=>clearTimeout(id));
+  st.fadeTimers=[];
+  st.layers.forEach(l=>{
+    if(l.fadeRaf){cancelAnimationFrame(l.fadeRaf);l.fadeRaf=null}
+    const startLayer=()=>{
+      if(l.el.paused){const p=l.el.play();if(p&&p.catch)p.catch(()=>{})}
+      const dur=700,t0=performance.now(),startVol=l.el.volume;
+      function step(now){
+        const p=Math.max(0,Math.min(1,(now-t0)/dur));
+        const target=st.muted?0:l.vol;
+        l.el.volume=startVol+(target-startVol)*p;
+        if(p<1)l.fadeRaf=requestAnimationFrame(step);
+        else l.fadeRaf=null
+      }
+      l.fadeRaf=requestAnimationFrame(step)
+    };
+    st.fadeTimers.push(setTimeout(startLayer,l.delay||0))
+  })
+}
+function DW_audioStopNow(){
+  const st=DW_getAudioState();
+  st.fadeTimers.forEach(id=>clearTimeout(id));
+  st.fadeTimers=[];
+  st.layers.forEach(l=>{
+    if(l.fadeRaf){cancelAnimationFrame(l.fadeRaf);l.fadeRaf=null}
+    l.el.volume=0;
+    if(!l.el.paused)l.el.pause()
+  })
+}
+function TH_roomCenter(floor,id){const r=ic(floor,id);return r?[(r.xmin+r.xmax)/2,(r.ymin+r.ymax)/2]:null}
+function TH_roomLabel(floor,id){const r=ic(floor,id);return r?r.label:id}
+function TH_findNeighbors(bookings,floor,myCells,myId){
+  const mine=(myCells||[]).map(id=>TH_roomCenter(floor,id)).filter(Boolean);
+  if(!mine.length)return[];
+  const mx=mine.reduce((s,c)=>s+c[0],0)/mine.length,my=mine.reduce((s,c)=>s+c[1],0)/mine.length;
+  return(bookings||[]).filter(b=>b.id!==myId&&b.floor===floor&&b.activity==="Stay"&&!(b.cells||[]).some(c=>(myCells||[]).includes(c))).map(b=>{
+    const cs=(b.cells||[]).map(id=>TH_roomCenter(floor,id)).filter(Boolean);
+    if(!cs.length)return null;
+    const bx=cs.reduce((s,c)=>s+c[0],0)/cs.length,by=cs.reduce((s,c)=>s+c[1],0)/cs.length;
+    return{booking:b,dist:Math.hypot(bx-mx,by-my)}
+  }).filter(Boolean).sort((a,c)=>a.dist-c.dist).map(x=>x.booking)
+}
+function NeighborsPopup({open,floor,neighbors,onClose}){
+  const[idx,setIdx]=j.useState(0);
+  j.useEffect(()=>{setIdx(0)},[neighbors]);
+  j.useEffect(()=>{
+    if(!open||!neighbors||neighbors.length<2)return;
+    const t=setInterval(()=>setIdx(i=>(i+1)%neighbors.length),5500);
+    return()=>clearInterval(t)
+  },[open,neighbors]);
+  if(!open)return null;
+  const b=neighbors&&neighbors.length?neighbors[idx]:null;
+  const rooms=b?(b.cells||[]).map(id=>TH_roomLabel(floor,id)).join(", "):"";
+  const stayText=b&&b.checkIn&&b.checkOut?BW_fmtDate(new Date(b.checkIn))+" → "+BW_fmtDate(new Date(b.checkOut)):"Staying long-term";
+  return k.jsx("div",{className:"dw-preview-overlay",onClick:onClose,children:k.jsxs("div",{className:"nb-card",onClick:e=>e.stopPropagation(),children:[
+    k.jsx("button",{className:"dw-preview-close nb-close",onClick:onClose,children:"\xD7"},"x"),
+    k.jsx("div",{className:"nb-glow-ring"},"gr"),
+    !b?k.jsxs("div",{className:"nb-empty",children:[
+        k.jsx("div",{className:"nb-empty-title",children:"You're the first one here!"},"t"),
+        k.jsx("div",{className:"nb-empty-desc",children:"No neighbors on this floor yet — be the one to welcome the next resident."},"d")
+      ]},"empty")
+    :k.jsxs("div",{className:"nb-body",children:[
+        k.jsx("div",{className:"nb-kicker",children:"Registered as your neighbor"},"k"),
+        k.jsx("div",{className:"nb-name",children:b.userName||"A fellow resident"},"n"),
+        k.jsxs("div",{className:"nb-meta",children:[
+          k.jsx("span",{children:rooms},"r"),
+          k.jsx("span",{className:"nb-sep",children:"·"},"sep"),
+          k.jsx("span",{children:stayText},"s")
+        ]},"meta"),
+        neighbors.length>1&&k.jsx("div",{className:"nb-dots",children:neighbors.map((_,i)=>k.jsx("button",{className:"nb-dotbtn"+(i===idx?" active":""),onClick:()=>setIdx(i)},i))},"dots")
+      ]},"body"+idx)
+  ]},"card")})
+}
+function DwPreviewFit({parts,camRef,children}){
+  const{camera:fallbackCamera}=Bn();
+  j.useLayoutEffect(()=>{
+    const camera=(camRef&&camRef.current)||fallbackCamera;
+    if(!camera)return;
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,minZ=Infinity,maxZ=-Infinity;
+    parts.forEach(p=>{const pos=p.position;for(let idx=0;idx<pos.length;idx+=3){const x=pos[idx],y=pos[idx+1],z=pos[idx+2];x<minX&&(minX=x);x>maxX&&(maxX=x);y<minY&&(minY=y);y>maxY&&(maxY=y);z<minZ&&(minZ=z);z>maxZ&&(maxZ=z)}});
+    const cx=(minX+maxX)/2,cy=(minY+maxY)/2,cz=(minZ+maxZ)/2;
+    const hx=Math.max((maxX-minX)/2,.5),hy=Math.max((maxY-minY)/2,.5),hz=Math.max((maxZ-minZ)/2,.5);
+    const radius=Math.sqrt(hx*hx+hy*hy+hz*hz);
+    const vFov=(camera.fov||35)*Math.PI/180;
+    const dist=radius/Math.sin(vFov/2)*1.14;
+    const dx=.95,dy=.16,dz=1.05,dLen=Math.hypot(dx,dy,dz);
+    camera.position.set(cx+dx/dLen*dist,cy+dy/dLen*dist,cz+dz/dLen*dist),camera.lookAt(cx,cy,cz),camera.near=.05,camera.far=Math.max(5e3,dist*10),camera.updateProjectionMatrix();
+    const ctrl=camera.userData.dwControls;ctrl&&(ctrl.target.set(cx,cy,cz),ctrl.minDistance=dist*.4,ctrl.maxDistance=dist*3,ctrl.update())
+  },[parts]);
+  return children
+}
+function DwFuncHoverCard({fn,rect,model}){
+  const[mounted,setMounted]=j.useState(!1);
+  const showTimer=j.useRef(null);
+  const camRef=j.useRef(null);
+  j.useEffect(()=>{
+    if(fn&&rect){
+      showTimer.current=setTimeout(()=>setMounted(!0),80)
+    }else{
+      if(showTimer.current){clearTimeout(showTimer.current);showTimer.current=null}
+      setMounted(!1)
+    }
+    return()=>{if(showTimer.current)clearTimeout(showTimer.current)}
+  },[fn,rect]);
+  const parts=j.useMemo(()=>model?(model.parts||[{position:model.position,index:model.index,color:model.color}]):null,[model]);
+  const center=j.useMemo(()=>parts?DW_computeCenter(parts):[0,0,0],[parts]);
+  if(!fn||!rect||!mounted)return null;
+  const W=196,H=196;
+  const spaceRight=window.innerWidth-rect.right;
+  const left=spaceRight>=W+18?rect.right+10:Math.max(8,rect.left-W-10);
+  const top=Math.min(Math.max(8,rect.top),window.innerHeight-H-8);
+  const fp=DW_computeFootprint(model);
+  const dims=fp?fp.width.toFixed(1)+" × "+fp.depth.toFixed(1)+"m":"";
+  return KA.createPortal(k.jsxs("div",{className:"dw-func-hover",style:{left,top,width:W},children:[
+    k.jsx("div",{className:"dw-func-hover-canvas",children:parts?k.jsxs(Uz,{shadows:!0,gl:{antialias:!0},children:[
+      k.jsx("color",{attach:"background",args:["#FFFCF6"]}),
+      k.jsx("hemisphereLight",{intensity:.7,skyColor:"#FFE9BE",groundColor:"#C9BBA0"}),
+      k.jsx("ambientLight",{intensity:.4}),
+      k.jsx("directionalLight",{position:[300,400,300],intensity:1.6}),
+      k.jsx(nB,{ref:camRef,makeDefault:!0,position:[8,6,8],fov:35,near:.05,far:5e3}),
+      k.jsx(Wv,{makeDefault:!0,target:center,ref:cr=>{if(cr){const cam=cr.object;cam.userData.dwControls=cr}},autoRotate:!0,autoRotateSpeed:1.7,enablePan:!1,enableZoom:!1,enableRotate:!1}),
+      k.jsx(DwPreviewFit,{parts,camRef,children:k.jsx("group",{position:[0,0,0],children:parts.map((p,idx)=>k.jsx(ExhPreviewPart,{part:p},idx))})})
+    ]}):k.jsx("div",{className:"dw-func-hover-loading",children:"…"})},"cv"),
+    k.jsxs("div",{className:"dw-func-hover-body",children:[
+      k.jsx("div",{className:"dw-func-hover-title",children:fn},"t"),
+      dims&&k.jsx("div",{className:"dw-func-hover-dims",children:dims},"d")
+    ]},"bd")
+  ]},"card"),document.body)
+}
+
+const DW_FUNC_ID_TO_SHORT=Object.fromEntries(Object.entries(DW_FUNC_ID_MAP).map(([a,b])=>[b,a]));
+
+if(typeof document!=="undefined"){
+  const dwUnlock=()=>DW_primeAudio();
+  document.addEventListener("click",dwUnlock,{once:!0});
+  document.addEventListener("keydown",dwUnlock,{once:!0})
+}
+function BookingFlow({cells,floor,floorIdx,clearCells,guestName,setGuestName,onConfirm,bookings}){
   const[step,setStep]=j.useState(1);
   const[calMonth,setCalMonth]=j.useState(()=>{const t=new Date();return new Date(t.getFullYear(),t.getMonth(),1)});
   const[checkIn,setCheckIn]=j.useState(null);
   const[checkOut,setCheckOut]=j.useState(null);
   const[confirmed,setConfirmed]=j.useState(null);
+  const[showNeighbors,setShowNeighbors]=j.useState(!1);
+  const neighbors=j.useMemo(()=>confirmed?TH_findNeighbors(bookings,floorIdx,confirmed.cellIds,confirmed.id):[],[confirmed,bookings,floorIdx]);
   const cellList=j.useMemo(()=>Array.from(cells||[]).sort(),[cells]);
   const roomLabels=cellList.map(id=>{const parts=id.split("-");return"Room "+parts[0]+"-"+parts[1]});
   const pickDay=d=>{
@@ -4024,7 +4507,7 @@ function BookingFlow({cells,floor,floorIdx,clearCells,guestName,setGuestName,onC
   const canNext1=cellList.length>0;
   const canNext2=!!checkIn&&!!checkOut;
   const canConfirm=guestName.trim().length>0;
-  const reset=()=>{setStep(1);setCheckIn(null);setCheckOut(null);setConfirmed(null);clearCells&&clearCells()};
+  const reset=()=>{setStep(1);setCheckIn(null);setCheckOut(null);setConfirmed(null);setShowNeighbors(!1);clearCells&&clearCells()};
   if(confirmed){
     return k.jsxs(k.Fragment,{children:[
       k.jsx("div",{className:"bw-confirm",children:[
@@ -4032,8 +4515,10 @@ function BookingFlow({cells,floor,floorIdx,clearCells,guestName,setGuestName,onC
         k.jsx("div",{className:"bw-confirm-text",children:"Thanks, "+confirmed.name+"!"},"n"),
         k.jsx("div",{className:"bw-confirm-detail",children:confirmed.rooms.join(", ")},"r"),
         k.jsx("div",{className:"bw-confirm-detail",children:BW_fmtDateOnly(confirmed.checkIn)+" → "+BW_fmtDateOnly(confirmed.checkOut)},"d"),
+        neighbors.length>0&&k.jsx("button",{className:"bw-btn",onClick:()=>setShowNeighbors(!0),children:"Meet Your Neighbors"},"nb"),
         k.jsx("button",{className:"bw-btn bw-btn-primary",onClick:reset,children:"Book Another Stay"},"b")
-      ]},"c")
+      ]},"c"),
+      k.jsx(NeighborsPopup,{open:showNeighbors,floor:floorIdx,neighbors,onClose:()=>setShowNeighbors(!1)},"nbp")
     ]})
   }
   return k.jsxs(k.Fragment,{children:[
@@ -4071,7 +4556,7 @@ function BookingFlow({cells,floor,floorIdx,clearCells,guestName,setGuestName,onC
       k.jsx("input",{className:"bw-input",type:"text",value:guestName,placeholder:"e.g. Jamie Rivera",onChange:e=>setGuestName(e.target.value)},"i"),
       k.jsx("div",{className:"bw-btn-row",children:[
         k.jsx("button",{className:"bw-btn",onClick:()=>setStep(2),children:"Back"},"b"),
-        k.jsx("button",{className:"bw-btn bw-btn-primary",disabled:!canConfirm,onClick:()=>{onConfirm&&onConfirm({id:"bkg_"+Date.now(),floor:floorIdx,cells:cellList,activity:"Stay",userName:guestName.trim(),duration:"",notes:"",checkIn:checkIn.toISOString(),checkOut:checkOut.toISOString(),bookedAt:new Date().toISOString(),status:"confirmed",roofEnabled:!1,roofInflation:0});setConfirmed({name:guestName.trim(),rooms:roomLabels,checkIn,checkOut});clearCells&&clearCells()},children:"Confirm Booking"},"c")
+        k.jsx("button",{className:"bw-btn bw-btn-primary",disabled:!canConfirm,onClick:()=>{const bid="bkg_"+Date.now();onConfirm&&onConfirm({id:bid,floor:floorIdx,cells:cellList,activity:"Stay",userName:guestName.trim(),duration:"",notes:"",checkIn:checkIn.toISOString(),checkOut:checkOut.toISOString(),bookedAt:new Date().toISOString(),status:"confirmed",roofEnabled:!1,roofInflation:0});setConfirmed({id:bid,cellIds:cellList,name:guestName.trim(),rooms:roomLabels,checkIn,checkOut});setShowNeighbors(!0);clearCells&&clearCells()},children:"Confirm Booking"},"c")
       ]},"br")
     ]},"3")
   ]})
@@ -4080,19 +4565,22 @@ const DW_DAY_START=8,DW_DAY_END=18;
 function dwDaySlots(bookings,date){const slots=[];for(let h=DW_DAY_START;h<DW_DAY_END;h++){const slotStart=new Date(date.getFullYear(),date.getMonth(),date.getDate(),h,0,0).getTime(),slotEnd=slotStart+36e5;const booking=(bookings||[]).find(bk=>{if(!DW_FUNCTIONS.includes(bk.activity)||!bk.checkIn||!bk.checkOut)return!1;const bkIn=new Date(bk.checkIn).getTime(),bkOut=new Date(bk.checkOut).getTime();return slotStart<bkOut&&slotEnd>bkIn});slots.push({hour:h,booking})}return slots}
 function dwFitsAt(slots,hours,h){const idx=slots.findIndex(s=>s.hour===h);if(idx<0||idx+hours>slots.length)return!1;for(let i=idx;i<idx+hours;i++)if(slots[i].booking)return!1;return!0}
 function dwFmtHour(h){const ap=h>=12?"PM":"AM",hh=h%12===0?12:h%12;return hh+":00 "+ap}
-function DeployFlow({cells,floor,floorIdx,clearCells,guestName,setGuestName,func,setFunc,onConfirm,bookings}){
+function DeployFlow({cells,floor,floorIdx,clearCells,guestName,setGuestName,func,setFunc,onConfirm,bookings,models}){
   const[step,setStep]=j.useState(1);
   const[calMonth,setCalMonth]=j.useState(()=>{const t=new Date();return new Date(t.getFullYear(),t.getMonth(),1)});
   const[calDate,setCalDate]=j.useState(null);
   const[hours,setHours]=j.useState(null);
   const[slotHour,setSlotHour]=j.useState(null);
   const[confirmed,setConfirmed]=j.useState(null);
+  const[hoverFn,setHoverFn]=j.useState(null);
+  const[hoverRect,setHoverRect]=j.useState(null);
   const cellList=j.useMemo(()=>Array.from(cells||[]).sort(),[cells]);
   const spaceLabels=cellList.map(id=>{const parts=id.split("-");return"Space "+parts[0]+"-"+parts[1]});
   const monthCells=j.useMemo(()=>BW_calcMonthDays(calMonth),[calMonth]);
   const monthLabel=calMonth.toLocaleDateString("en-GB",{month:"long",year:"numeric"});
   const todayStart=new Date(new Date().setHours(0,0,0,0)).getTime();
   const daySlots=j.useMemo(()=>calDate?dwDaySlots(bookings,calDate):[],[calDate,bookings]);
+  const challenge=j.useMemo(()=>ChallengeCheck(DW_floorLabelToZoneId(floor),func?DW_FUNC_ID_MAP[func]:null),[floor,func]);
   const canNext1=!!func;
   const canNext2=!!calDate;
   const canNext3=!!hours&&hours>=BW_MIN_HOURS&&hours<=BW_MAX_HOURS;
@@ -4115,13 +4603,18 @@ function DeployFlow({cells,floor,floorIdx,clearCells,guestName,setGuestName,func
     ]})
   }
   return k.jsxs(k.Fragment,{children:[
+    k.jsx(DwFuncHoverCard,{fn:hoverFn,rect:hoverRect,model:hoverFn&&models?models[hoverFn]:null},"pm"),
     k.jsx("div",{className:"bw-steps",children:[1,2,3,4,5,6].map(n=>k.jsx("div",{className:"bw-step-dot"+(step===n?" active":step>n?" done":""),children:n},n))},"s"),
     step===1&&k.jsx("div",{className:"bw-step",children:[
       k.jsx("div",{className:"bw-hint",children:"What will this space be used for?"},"h"),
-      k.jsx("div",{className:"dw-func-grid",children:DW_FUNCTIONS.map(fn=>k.jsxs("button",{className:"dw-func-chip"+(func===fn?" active":""),onClick:()=>setFunc(fn===func?null:fn),children:[
+      k.jsx("div",{className:"dw-func-grid",children:DW_FUNCTIONS.map(fn=>k.jsxs("button",{className:"dw-func-chip"+(func===fn?" active":""),onClick:()=>setFunc(fn===func?null:fn),onMouseEnter:e=>{setHoverRect(e.currentTarget.getBoundingClientRect());setHoverFn(fn)},onMouseLeave:()=>{setHoverFn(null);setHoverRect(null)},onFocus:e=>{setHoverRect(e.currentTarget.getBoundingClientRect());setHoverFn(fn)},onBlur:()=>{setHoverFn(null);setHoverRect(null)},children:[
         k.jsx("span",{className:"dw-func-name",children:fn},"n"),
         k.jsx("span",{className:"dw-func-desc",children:DW_FUNCTION_DESC[fn]},"d")
       ]},fn))},"fg"),
+      challenge&&challenge.status!=="neutral"&&k.jsxs("div",{className:"ch-card ch-"+challenge.status,key:floor+"|"+func,children:[
+        k.jsx("span",{className:"ch-card-badge",children:challenge.status==="fit"?"Fits well":"Worth a second look"},"b"),
+        k.jsx("span",{className:"ch-card-msg",children:challenge.message},"m")
+      ]},"chc"),
       k.jsx("button",{className:"bw-btn bw-btn-primary",disabled:!canNext1,onClick:()=>setStep(2),children:"Next: Pick a Date"},"n")
     ]},"1"),
     step===2&&k.jsx("div",{className:"bw-step",children:[
@@ -4191,7 +4684,7 @@ function DeployFlow({cells,floor,floorIdx,clearCells,guestName,setGuestName,func
     ]},"6")
   ]})
 }
-function StayDeployWizard({selCells,dwCells,floorLabel,activeFloorIdx,onClearCells,onClearDwCells,setPickMode,pickMode,dwFunc,setDwFunc,onConfirmBooking,bookings}){
+function StayDeployWizard({selCells,dwCells,floorLabel,activeFloorIdx,onClearCells,onClearDwCells,setPickMode,pickMode,dwFunc,setDwFunc,onConfirmBooking,dwModels,bookings,visitedCount,allFloorsVisited}){
   const[guestName,setGuestName]=j.useState("");
   const bwEligible=BW_FLOORS.includes(floorLabel);
   const dwEligible=DW_FLOORS.includes(floorLabel);
@@ -4201,6 +4694,15 @@ function StayDeployWizard({selCells,dwCells,floorLabel,activeFloorIdx,onClearCel
     else if(mode==="deploy"&&!dwEligible&&bwEligible)setPickMode&&setPickMode("book");
   },[floorLabel]);
   const showBooking=mode==="book";
+  if(!allFloorsVisited){
+    return k.jsxs("div",{className:"bw-box",children:[
+      k.jsxs("div",{className:"uw-tabs",children:[
+        k.jsx("button",{className:"uw-tab disabled",disabled:!0,children:"Book a Stay"},"bk"),
+        k.jsx("button",{className:"uw-tab disabled",disabled:!0,children:"Design a Deployable"},"dp")
+      ]},"tabs"),
+      k.jsxs("div",{className:"bw-hint",children:["Explore every floor first — move through Floor G and Floors 1–5 with ↑/↓ to see each floor's persona and challenges. ",k.jsx("b",{children:(visitedCount||1)+" / "+wR.length+" floors explored."},"c")]},"bh")
+    ]},"bw-box")
+  }
   return k.jsxs("div",{className:"bw-box",children:[
     k.jsxs("div",{className:"uw-tabs",children:[
       k.jsx("button",{className:"uw-tab"+(showBooking?" active":"")+(!bwEligible?" disabled":""),onClick:()=>bwEligible&&setPickMode&&setPickMode("book"),children:"Book a Stay"},"bk"),
@@ -4208,10 +4710,10 @@ function StayDeployWizard({selCells,dwCells,floorLabel,activeFloorIdx,onClearCel
     ]},"tabs"),
     showBooking
       ?(bwEligible
-          ?k.jsx(BookingFlow,{cells:selCells,floor:floorLabel,floorIdx:activeFloorIdx,clearCells:onClearCells,guestName,setGuestName,onConfirm:onConfirmBooking},"bf")
+          ?k.jsx(BookingFlow,{cells:selCells,floor:floorLabel,floorIdx:activeFloorIdx,clearCells:onClearCells,guestName,setGuestName,onConfirm:onConfirmBooking,bookings},"bf")
           :k.jsx("div",{className:"bw-hint",children:"Room booking is available on Floor 1, 2 and 3. Scroll to one of these floors in the 3D view to select a room."},"bh"))
       :(dwEligible
-          ?k.jsx(DeployFlow,{cells:dwCells,floor:floorLabel,floorIdx:activeFloorIdx,clearCells:onClearDwCells,guestName,setGuestName,func:dwFunc,setFunc:setDwFunc,onConfirm:onConfirmBooking,bookings},"df")
+          ?k.jsx(DeployFlow,{cells:dwCells,floor:floorLabel,floorIdx:activeFloorIdx,clearCells:onClearDwCells,guestName,setGuestName,func:dwFunc,setFunc:setDwFunc,onConfirm:onConfirmBooking,bookings,models:dwModels},"df")
           :k.jsx("div",{className:"bw-hint",children:"Deployable space selection is available on Floors 1 through 5. Scroll to one of these floors in the 3D view to select a space."},"dh"))
   ]},"uw")
 }
@@ -4319,4 +4821,4 @@ function ExhPreviewPart({part,activity,userName,fade=0}){
   },[part,activity,fade]);
   return k.jsx("mesh",{geometry:geo,material:mat,renderOrder:999,castShadow:!0,receiveShadow:!0});
 }
-function kB({layers:n,visible:e,setVisible:t,activeFloor:i,activeFloorIdx:afIdx,setActiveFloor:r,onFloorSelect:s,collapsed:o,selCells,onClearCells,dwCells,onClearDwCells,setPickMode,pickMode,dwFunc,setDwFunc,onConfirmBooking,mode,onSwitchMode,bookings,now}){const a=n.filter(v=>!a_.has(v.layer)),u=a.every(v=>e[v.layer]!==!1),f=()=>{const v={};a.forEach(y=>v[y.layer]=!u),t(y=>({...y,...v}))},d={};n.forEach(v=>d[v.layer]=v.color);const h=v=>v?`#${v[0].toString(16).padStart(2,"0")}${v[1].toString(16).padStart(2,"0")}${v[2].toString(16).padStart(2,"0")}`:"#888",p=v=>{const y=n.filter(g=>v.includes(g.layer)),w=y.some(g=>e[g.layer]!==!1),_={};y.forEach(g=>_[g.layer]=!w),t(g=>({...g,..._}))};return k.jsxs("div",{className:`panel${o?" panel-collapsed":""}`,children:[k.jsxs("div",{className:"panel-header",children:[k.jsxs("div",{className:"panel-logo-row",children:[k.jsx("div",{className:"panel-logo",children:"Third Home"})]}),k.jsx("div",{className:"panel-subtitle",children:"Wolfsburg"})]}),mode==="viewer"?k.jsxs("div",{className:"bw-box",children:[k.jsx("div",{className:"bw-title",children:"Your Third Home"}),k.jsx("div",{className:"bw-hint",children:"Choose a viewpoint below, then export your design."}),k.jsx("button",{className:"bs-btn-book",onClick:()=>onSwitchMode("editor"),children:"← Back to Editing"})]}):k.jsxs(k.Fragment,{children:[k.jsx(StayDeployWizard,{selCells,dwCells,floorLabel:i,activeFloorIdx:afIdx,onClearCells,onClearDwCells,setPickMode,pickMode,dwFunc,setDwFunc,onConfirmBooking,bookings}),k.jsx("button",{className:"bs-btn-book",style:{margin:"0 16px"},onClick:()=>onSwitchMode("viewer"),children:"Finish & View My Design →"}),k.jsx(DwSocialCalendar,{bookings,now})]}),k.jsx("div",{className:"panel-footer",children:k.jsx("div",{className:"stat",children:i?`Showing: ${Yv(i)}`:`${a.filter(v=>e[v.layer]!==!1).length} / ${a.length} other layers visible`})})]})}function zB(){const[n,e]=j.useState(null),[t,i]=j.useState({}),[r,s]=j.useState("Floor G"),[o,a]=j.useState("editor"),[u,f]=j.useState("iso"),[d,h]=j.useState(!1),[p,v]=j.useState(null),[y,w]=j.useState(0),[_,g]=j.useState(new Set),[dwCells,setDwCells]=j.useState(new Set),[pickMode,setPickMode]=j.useState("book"),[dwFunc,setDwFunc]=j.useState(null),[exhModel,setExhModel]=j.useState(null),[perfModel,setPerfModel]=j.useState(null),[recModel,setRecModel]=j.useState(null),[cowModel,setCowModel]=j.useState(null),[terrModel,setTerrModel]=j.useState(null),[gardModel,setGardModel]=j.useState(null),[workModel,setWorkModel]=j.useState(null),[retrModel,setRetrModel]=j.useState(null),[openStudModel,setOpenStudModel]=j.useState(null),[cafeBarModel,setCafeBarModel]=j.useState(null),[S,M]=j.useState(Ra),[E,P]=j.useState(null),[b,I]=j.useState(0),[N,G]=j.useState({}),[A,R]=j.useState(null),V=j.useRef(null),[D,$]=j.useState(null),[fmMode,setFmMode]=j.useState(!1),K=j.useRef(null),F=()=>{if(!K.current)return;const printWin=window.open("","_blank");const{capture:O,camera:L}=K.current;let ie;try{ie=O("png")}catch{printWin&&printWin.close();return}const he=new Image;he.onload=()=>{try{const pe=he.width,ve=he.height,De=pe/1920,prExtra=Math.max(0,dwActiveBookings.length-3)*22,Ne=Math.round((110+prExtra)*De),ze=document.createElement("canvas");ze.width=pe,ze.height=ve+Ne;const Re=ze.getContext("2d");if(Re.drawImage(he,0,0),L){const ut="#FFD167";dwActiveBookings.forEach(X=>{var we;try{const W=X.floor,Te=!DW_FUNCTIONS.includes(X.activity),ae=[],_e=[];for(const Q of X.cells||[])if(Te){const oe=ic(W,Q);if(oe){const[ue,,ee]=vc(oe,W);ae.push(ue),_e.push(ee)}}else{const[oe,ue]=Q.split("-").map(Number),[ee,,Ue]=ji(oe,ue,W);ae.push(ee),_e.push(Ue)}if(!ae.length)return;const ke=ae.reduce((Q,oe)=>Q+oe,0)/ae.length,je=_e.reduce((Q,oe)=>Q+oe,0)/_e.length,wt=ji(0,0,W)[1]+un+2.5,bt=new B(ke,wt,je).project(L);if(bt.z>1)return;const It=(bt.x+1)/2*pe,gt=-(bt.y-1)/2*ve;if(It<10||It>pe-10||gt<10||gt>ve-10)return;const qt=X.userName||"Booking",tn=X.activity||"",Qi=((we=Hi[W])==null?void 0:we.label)||`F${W}`,Vs=Math.round(13*De),er=Math.round(10*De),os=Math.round(8*De),zr=Math.round(17*De),Gs=Math.round(11*De);Re.font=`800 ${Vs}px system-ui, sans-serif`;const tr=Re.measureText(qt).width;Re.font=`500 ${er}px system-ui, sans-serif`;const qa=tn?Re.measureText(tn).width:0;Re.font=`700 ${os}px system-ui, sans-serif`;const Ws=Re.measureText(Qi).width,js=Math.max(tr,qa,Ws)+Gs*2,Xs=(1+(tn?1:0)+1)*zr+Gs*1.4,Za=It-js/2,Ys=gt-Xs-Math.round(10*De);Re.fillStyle="rgba(2,4,14,0.93)",Re.fillRect(Za,Ys,js,Xs),Re.strokeStyle=ut,Re.lineWidth=Math.max(1,Math.round(1.5*De)),Re.strokeRect(Za,Ys,js,Xs),Re.save(),Re.globalAlpha=.4,Re.strokeStyle=ut,Re.lineWidth=Math.max(1,Math.round(De)),Re.beginPath(),Re.moveTo(It,Ys+Xs),Re.lineTo(It,gt),Re.stroke(),Re.restore(),Re.textAlign="center",Re.shadowColor=ut,Re.shadowBlur=Math.round(8*De),Re.font=`800 ${Vs}px system-ui, sans-serif`,Re.fillStyle="#ffffff";let U=Ys+Gs+Vs;Re.fillText(qt,It,U),Re.shadowBlur=0,tn&&(U+=zr,Re.font=`500 ${er}px system-ui, sans-serif`,Re.fillStyle=ut,Re.fillText(tn,It,U)),U+=zr,Re.font=`700 ${os}px system-ui, sans-serif`,Re.fillStyle="rgba(255,255,255,0.45)",Re.fillText(Qi,It,U),Re.textAlign="left",Re.shadowBlur=0}catch{}})}Re.fillStyle="#FFF7E8",Re.fillRect(0,ve,pe,Ne),Re.fillStyle="#EF6646",Re.fillRect(0,ve,pe,Math.max(2,Math.round(2*De))),Re.fillStyle="rgba(58,69,80,0.15)",Re.fillRect(Math.round(pe*.5),ve+Math.round(16*De),Math.max(1,Math.round(De)),Ne-Math.round(28*De));const Ie=Math.round(32*De),Be=ve+Math.round(40*De),ct=pe-Ie;Re.textAlign="left",Re.font=`800 ${Math.round(22*De)}px "IBM Plex Mono", system-ui, sans-serif`,Re.fillStyle="#3A4550",Re.fillText("THIRD HOME WOLFSBURG",Ie,Be),Re.font=`500 ${Math.round(12*De)}px "IBM Plex Mono", system-ui, sans-serif`,Re.fillStyle="#4360B0",Re.fillText("THIRD HOME WOLFSBURG INTERFACE",Ie,Be+Math.round(24*De)),Re.font=`400 ${Math.round(11*De)}px "IBM Plex Mono", system-ui, sans-serif`,Re.fillStyle="#8A8577",Re.fillText(new Date().toLocaleDateString("en-GB",{year:"numeric",month:"long",day:"numeric"}),Ie,Be+Math.round(48*De)),Re.textAlign="right",Re.font=`700 ${Math.round(10*De)}px "IBM Plex Mono", system-ui, sans-serif`,Re.fillStyle="#8A8577",Re.fillText("BOOKING CONFIRMATION",ct,Be-Math.round(18*De));const prColW=[18,14,6],prHeaderRow="NAME".padEnd(prColW[0])+"ACTIVITY".padEnd(prColW[1])+"FLOOR".padEnd(prColW[2]);Re.textAlign="left",Re.font=`700 ${Math.round(10*De)}px "IBM Plex Mono", monospace`,Re.fillStyle="#8A8577";const prCharW=Re.measureText("0").width,prTableW=prHeaderRow.length*prCharW;Re.fillText(prHeaderRow,ct-prTableW,Be-Math.round(2*De)),Re.strokeStyle="rgba(58,69,80,0.2)",Re.lineWidth=Math.max(1,Math.round(De)),Re.beginPath(),Re.moveTo(ct-prTableW,Be+Math.round(4*De)),Re.lineTo(ct,Be+Math.round(4*De)),Re.stroke(),Re.font=`600 ${Math.round(13*De)}px "IBM Plex Mono", monospace`,dwActiveBookings.forEach((ut,X)=>{var Te;const we=((Te=Hi[ut.floor])==null?void 0:Te.label)||`F${ut.floor}`,prRow=(ut.userName||"").padEnd(prColW[0])+(ut.activity||"").padEnd(prColW[1])+we.padEnd(prColW[2]);Re.fillStyle="#3A4550",Re.fillText(prRow,ct-prTableW,Be+Math.round((18+X*22)*De))});if(printWin){const durl=ze.toDataURL("image/png",.95);printWin.document.write('<!doctype html><html><head><title>Third Home Wolfsburg</title><style>@page{size:landscape;margin:10mm}html,body{margin:0;height:100%;background:#FFFCF6}body{display:flex;align-items:center;justify-content:center}img{max-width:100%;max-height:100%;width:auto;height:auto;display:block}</style></head><body><img src="'+durl+'" onload="window.focus();window.print()"></body></html>'),printWin.document.close()}}catch(pe){console.error("export failed",pe),printWin&&printWin.close()}},he.src=ie},Y=E?S.find(me=>me.id===E):null,q=j.useMemo(()=>E&&Y?Y.cells.map(me=>{const[O,L]=me.split("-").map(Number);return ji(O,L,Y.floor)}):_.size>0?[..._].map(me=>{const[O,L]=me.split("-").map(Number);return ji(O,L,y)}):[],[_,y,E,Y]),re=me=>{a(me),f("iso")},Ee=me=>{f(me),me==="plan"&&o==="editor"&&(clearInterval(V.current),P(null),I(0),R(null))},Pe=(me,O,L)=>{M(ie=>ie.map(he=>{if(he.id!==me)return he;const pe={...he,roofEnabled:O,roofInflation:L};return gB(pe),pe}))},se=j.useMemo(()=>Y?MR(Y.cells,Y.floor):[],[E,S]),fe=me=>{const dwModel=({Exhibition:exhModel,Performance:perfModel,Recreation:recModel,"Co-Working":cowModel,Terraces:terrModel,Gardening:gardModel,Workshop:workModel,Retreat:retrModel,"Open Studios":openStudModel,"Cafe / Bar":cafeBarModel})[dwFunc];if(pickMode==="deploy"&&dwModel){const depthTiles=Math.max(1,Math.round(dwModel.size.depth/Rt)),widthTiles=Math.max(1,Math.round(dwModel.size.width/Rt)),[ce,cp]=me.split("-").map(Number),distE=Math.min(ce,uB-1-ce),distP=Math.min(cp,fB-1-cp),rotate=distE<distP,fpE=rotate?widthTiles:depthTiles,fpP=rotate?depthTiles:widthTiles,startE=Math.max(0,Math.min(ce,uB-fpE)),startP=Math.max(0,Math.min(cp,fB-fpP)),block=new Set;for(let de=0;de<fpE;de++)for(let dp=0;dp<fpP;dp++)block.add(`${startE+de}-${startP+dp}`);setDwCells(O=>O.has(me)&&O.size===block.size&&[...O].every(x=>block.has(x))?new Set:block);return}(pickMode==="deploy"?setDwCells:g)(O=>{const L=new Set(O);return L.has(me)?L.delete(me):L.add(me),L})},be=()=>g(new Set),Ce=me=>{w(me),g(new Set),setDwCells(new Set)},tt=me=>{clearInterval(V.current),P(me),I(0),R(null),f("iso")},it=()=>{clearInterval(V.current),P(null),I(0),R(null)},Ze=()=>{clearInterval(V.current);const me=se.length;let O=b;V.current=setInterval(()=>{O++,I(O),O>=me&&clearInterval(V.current)},550)},Fe=()=>{clearInterval(V.current),I(0)},ye=(me,O)=>{G(L=>({...L,[E]:{...L[E]||{},[me]:O}}))};j.useEffect(()=>{fetch("./model.json").then(me=>me.json()).then(me=>{e(me);const O={};me.statics.forEach(L=>O[L.layer]=!0),i(O)})},[]);const z=j.useMemo(()=>{if(!n)return[];const me={};return n.statics.forEach(O=>{me[O.layer]||(me[O.layer]=PAL[O.layer]?palHex(PAL[O.layer]):O.color)}),Object.entries(me).map(([O,L])=>({layer:O,color:L}))},[n]);const[dwNow,setDwNow]=j.useState(()=>Date.now());j.useEffect(()=>{const dwIv=setInterval(()=>setDwNow(Date.now()),15000);return()=>clearInterval(dwIv)},[]);const dwActiveBookings=j.useMemo(()=>S.filter(bk=>dwIsActive(bk,dwNow)),[S,dwNow]);const dwFadeMap=j.useMemo(()=>{const dwDeployed=dwActiveBookings.filter(bk=>DW_FUNCTIONS.includes(bk.activity)).map(bk=>({id:bk.id,t:Number((bk.id||"").split("_")[1])||0})).sort((a,b)=>b.t-a.t),map=new Map();return dwDeployed.forEach((bk,idx)=>map.set(bk.id,idx===0?0:1)),map},[dwActiveBookings]);j.useEffect(()=>{fetch("./roof_morph.json").then(me=>me.json()).then(me=>$(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./exhibition_model.json").then(me=>me.json()).then(me=>setExhModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./performance_model.json").then(me=>me.json()).then(me=>setPerfModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./recreation_model.json").then(me=>me.json()).then(me=>setRecModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./co-working_model.json").then(me=>me.json()).then(me=>setCowModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./terrace_model.json").then(me=>me.json()).then(me=>setTerrModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./gardening_model.json").then(me=>me.json()).then(me=>setGardModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./workshop_model.json").then(me=>me.json()).then(me=>setWorkModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./retreat_model.json").then(me=>me.json()).then(me=>setRetrModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./open-studios_model.json").then(me=>me.json()).then(me=>setOpenStudModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./cafe-bar_model.json").then(me=>me.json()).then(me=>setCafeBarModel(me)).catch(()=>{})},[]);const fsRRef=j.useRef(r);j.useEffect(()=>{fsRRef.current=r},[r]);j.useEffect(()=>{let fsBusy=!1;const fsKey=me=>{if(me.target.closest(".panel"))return;if(me.target.tagName==="INPUT"||me.target.tagName==="TEXTAREA")return;if(me.key!=="ArrowUp"&&me.key!=="ArrowDown")return;if(fsBusy)return;me.preventDefault();const fsCur=wR.indexOf(fsRRef.current)>=0?wR.indexOf(fsRRef.current):0,fsNext=me.key==="ArrowUp"?Math.min(fsCur+1,wR.length-1):Math.max(fsCur-1,0);if(fsNext===fsCur)return;s(wR[fsNext]),Ce(fsNext),fsBusy=!0,setTimeout(()=>{fsBusy=!1},700)};return window.addEventListener("keydown",fsKey),()=>window.removeEventListener("keydown",fsKey)},[]);const le={viewer:"Drag to orbit · scroll to zoom · right-drag to pan",plan:"Plan view · scroll to zoom · drag to pan · no rotation",iso:"Iso view · drag to orbit · scroll to zoom · ↑/↓ to change floor · right-drag to pan",fixed:"Fixed viewpoint · scroll to zoom · right-drag to pan"},xe=o==="viewer"?u==="plan"?le.plan:le.fixed:o==="editor"?le[u]:le.viewer,Me=`${o}-${u}`,Ve="cyber",Gf=(fmMode?null:r)?-wR.indexOf(fmMode?null:r)*7:0;return k.jsxs("div",{className:"app","data-mode":o,"data-view":u,children:[k.jsx("div",{className:"canvas-wrap",children:k.jsxs(Uz,{shadows:!0,gl:{antialias:!0,preserveDrawingBuffer:!0},children:[k.jsx("color",{attach:"background",args:["#FFFCF6"]}),k.jsx("hemisphereLight",{intensity:.35,skyColor:"#FFF9EE",groundColor:"#E4DCCF"}),k.jsx("ambientLight",{intensity:.22}),k.jsx("directionalLight",{position:[300,400,300],intensity:1.2,castShadow:!0,"shadow-mapSize-width":2048,"shadow-mapSize-height":2048,"shadow-camera-near":1,"shadow-camera-far":2e3,"shadow-camera-left":-600,"shadow-camera-right":600,"shadow-camera-top":600,"shadow-camera-bottom":-600,"shadow-bias":-.001}),k.jsx("directionalLight",{position:[-260,180,-220],intensity:.29,color:"#E8EEF3"}),k.jsx(cB,{mode:o,viewMode:u},Me),k.jsx(wB,{captureRef:K}),o==="editor"&&!E&&y>=1&&y<=5&&(pickMode==="deploy"?!!dwFunc:y<=3)&&(pickMode!=="deploy"&&gc.has(y)?k.jsx(MB,{floor:y,sel:pickMode==="deploy"?dwCells:_,bookings:dwActiveBookings,onToggle:fe,scheme:Ve,noGlow:pickMode==="deploy"}):k.jsx(yB,{floor:y,sel:pickMode==="deploy"?dwCells:_,bookings:dwActiveBookings,onToggle:fe,scheme:Ve,noGlow:pickMode==="deploy"})),o==="editor"&&!E&&dwFunc==="Exhibition"&&dwCells.size>0&&exhModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:exhModel,activity:"Exhibition",fade:0},"exh-live"),(o==="editor"||o==="viewer")&&!E&&exhModel&&dwActiveBookings.filter(bk=>bk.activity==="Exhibition"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:exhModel,activity:"Exhibition",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Performance"&&dwCells.size>0&&perfModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:perfModel,activity:"Performance",fade:0},"perf-live"),(o==="editor"||o==="viewer")&&!E&&perfModel&&dwActiveBookings.filter(bk=>bk.activity==="Performance"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:perfModel,activity:"Performance",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Recreation"&&dwCells.size>0&&recModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:recModel,activity:"Recreation",fade:0},"rec-live"),(o==="editor"||o==="viewer")&&!E&&recModel&&dwActiveBookings.filter(bk=>bk.activity==="Recreation"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:recModel,activity:"Recreation",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Co-Working"&&dwCells.size>0&&cowModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:cowModel,activity:"Co-Working",fade:0},"cow-live"),(o==="editor"||o==="viewer")&&!E&&cowModel&&dwActiveBookings.filter(bk=>bk.activity==="Co-Working"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:cowModel,activity:"Co-Working",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Terraces"&&dwCells.size>0&&terrModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:terrModel,activity:"Terraces",fade:0},"terr-live"),(o==="editor"||o==="viewer")&&!E&&terrModel&&dwActiveBookings.filter(bk=>bk.activity==="Terraces"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:terrModel,activity:"Terraces",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Gardening"&&dwCells.size>0&&gardModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:gardModel,activity:"Gardening",fade:0},"gard-live"),(o==="editor"||o==="viewer")&&!E&&gardModel&&dwActiveBookings.filter(bk=>bk.activity==="Gardening"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:gardModel,activity:"Gardening",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Workshop"&&dwCells.size>0&&workModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:workModel,activity:"Workshop",fade:0},"work-live"),(o==="editor"||o==="viewer")&&!E&&workModel&&dwActiveBookings.filter(bk=>bk.activity==="Workshop"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:workModel,activity:"Workshop",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Retreat"&&dwCells.size>0&&retrModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:retrModel,activity:"Retreat",fade:0},"retr-live"),(o==="editor"||o==="viewer")&&!E&&retrModel&&dwActiveBookings.filter(bk=>bk.activity==="Retreat"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:retrModel,activity:"Retreat",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Open Studios"&&dwCells.size>0&&openStudModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:openStudModel,activity:"Open Studios",fade:0},"openstud-live"),(o==="editor"||o==="viewer")&&!E&&openStudModel&&dwActiveBookings.filter(bk=>bk.activity==="Open Studios"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:openStudModel,activity:"Open Studios",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Cafe / Bar"&&dwCells.size>0&&cafeBarModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:cafeBarModel,activity:"Cafe / Bar",fade:0},"cafebar-live"),(o==="editor"||o==="viewer")&&!E&&cafeBarModel&&dwActiveBookings.filter(bk=>bk.activity==="Cafe / Bar"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:cafeBarModel,activity:"Cafe / Bar",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&Y&&E&&k.jsx(LE,{booking:Y,wallTypesMap:N[E]||{},activeWallId:A,onSelectWall:R,animStep:b,roofEnabled:Y.roofEnabled??!1,roofMorphData:D,roofInflation:Y.roofInflation??0},E),o==="viewer"&&dwActiveBookings.filter(me=>!DW_FUNCTIONS.includes(me.activity)).map(me=>k.jsx(LE,{booking:me,wallTypesMap:N[me.id]||{},activeWallId:null,onSelectWall:()=>{},animStep:999,roofEnabled:me.roofEnabled??!1,roofMorphData:D,roofInflation:me.roofInflation??0},me.id)),n&&k.jsx(aB,{data:n,visible:t,activeFloor:o==="viewer"?null:fmMode?null:r,focusLayers:null,mode:o,hovered:p,onHover:v,viewerOpacity:1,colorOverride:null}),o==="editor"&&!E&&dwActiveBookings.filter(bk=>bk.floor===y).length>0&&k.jsx(TB,{bookings:dwActiveBookings.filter(bk=>bk.floor===y),glowFill:"#B0431E",glowEdge:"#FFD167"})]})}),n&&(o==="viewer"||o==="editor")&&k.jsx(kB,{layers:z,visible:t,setVisible:i,activeFloor:r,activeFloorIdx:y,setActiveFloor:s,onFloorSelect:Ce,collapsed:d,selCells:_,onClearCells:()=>g(new Set),dwCells,onClearDwCells:()=>setDwCells(new Set),setPickMode,pickMode,dwFunc,setDwFunc,onConfirmBooking:bk=>{IE(bk),M(Ra())},mode:o,onSwitchMode:re,bookings:S,now:dwNow}),o==="editor"&&n&&k.jsx(IB,{floor:y,onFloor:Ce,sel:_,onToggle:fe,onClearSel:be,bookings:S,onBookings:M,assemblyId:E,assemblyWalls:se,assemblyStep:b,wallTypes:N[E]||{},activeWallId:A,onStartAssembly:tt,onCloseAssembly:it,onPlayAssembly:Ze,onResetAssembly:Fe,onSetWallType:ye,onSelectWall:R,roofMorphData:D,onSetRoof:Pe}),!n&&k.jsxs("div",{className:"loading",children:[k.jsx("div",{className:"loading-dot"}),"Loading model…"]}),o!=="viewer"&&k.jsx(OB,{viewMode:u,setViewMode:Ee}),o==="editor"&&k.jsx("button",{className:`fullmodel-toggle${fmMode?" active":""}`,onClick:()=>setFmMode(z=>!z),children:"Full Model"}),o==="viewer"&&k.jsxs("div",{className:"viewer-export-panel",children:[k.jsx("div",{className:"viewer-export-title",children:"Viewpoint"}),k.jsxs("div",{className:"viewer-export-btns",children:[k.jsx("button",{className:`viewer-export-btn${u==="iso"?" active":""}`,onClick:()=>Ee("iso"),children:"View 1"}),k.jsx("button",{className:`viewer-export-btn${u==="iso2"?" active":""}`,onClick:()=>Ee("iso2"),children:"View 2"})]}),k.jsx("div",{className:"viewer-export-title",children:"Export View"}),k.jsx("div",{className:"viewer-export-btns",children:k.jsx("button",{className:"viewer-export-btn",onClick:()=>F(),children:"PDF"})})]}),k.jsx("div",{className:"hint",children:xe})]})}ix(document.getElementById("root")).render(k.jsx(zB,{}));
+function kB({layers:n,visible:e,setVisible:t,activeFloor:i,activeFloorIdx:afIdx,setActiveFloor:r,onFloorSelect:s,collapsed:o,selCells,onClearCells,dwCells,onClearDwCells,setPickMode,pickMode,dwFunc,setDwFunc,onConfirmBooking,mode,onSwitchMode,bookings,now,dwModels,dwVisitedCount,dwAllFloorsVisited}){const a=n.filter(v=>!a_.has(v.layer)),u=a.every(v=>e[v.layer]!==!1),f=()=>{const v={};a.forEach(y=>v[y.layer]=!u),t(y=>({...y,...v}))},d={};n.forEach(v=>d[v.layer]=v.color);const h=v=>v?`#${v[0].toString(16).padStart(2,"0")}${v[1].toString(16).padStart(2,"0")}${v[2].toString(16).padStart(2,"0")}`:"#888",p=v=>{const y=n.filter(g=>v.includes(g.layer)),w=y.some(g=>e[g.layer]!==!1),_={};y.forEach(g=>_[g.layer]=!w),t(g=>({...g,..._}))};return k.jsxs("div",{className:`panel${o?" panel-collapsed":""}`,children:[k.jsxs("div",{className:"panel-header",children:[k.jsxs("div",{className:"panel-logo-row",children:[k.jsx("div",{className:"panel-logo",children:"Third Home"})]}),k.jsx("div",{className:"panel-subtitle",children:"Wolfsburg"})]}),mode==="viewer"?k.jsxs("div",{className:"bw-box",children:[k.jsx("div",{className:"bw-title",children:"Your Third Home"}),k.jsx("div",{className:"bw-hint",children:"Choose a viewpoint below, then export your design."}),k.jsx("button",{className:"bs-btn-book",onClick:()=>onSwitchMode("editor"),children:"← Back to Editing"})]}):k.jsxs(k.Fragment,{children:[k.jsx(StayDeployWizard,{selCells,dwCells,floorLabel:i,activeFloorIdx:afIdx,onClearCells,onClearDwCells,setPickMode,pickMode,dwFunc,setDwFunc,onConfirmBooking,dwModels,bookings,visitedCount:dwVisitedCount,allFloorsVisited:dwAllFloorsVisited}),k.jsx("button",{className:"bs-btn-book",style:{margin:"0 16px"},onClick:()=>onSwitchMode("viewer"),children:"Finish & View My Design →"}),k.jsx(DwSocialCalendar,{bookings,now})]}),k.jsx("div",{className:"panel-footer",children:k.jsx("div",{className:"stat",children:i?`Showing: ${Yv(i)}`:`${a.filter(v=>e[v.layer]!==!1).length} / ${a.length} other layers visible`})})]})}function zB(){const[n,e]=j.useState(null),[t,i]=j.useState({}),[r,s]=j.useState("Floor G"),[dwVisitedFloors,setDwVisitedFloors]=j.useState(()=>new Set(["Floor G"])),[o,a]=j.useState("editor"),[u,f]=j.useState("iso"),[d,h]=j.useState(!1),[p,v]=j.useState(null),[y,w]=j.useState(0),[_,g]=j.useState(new Set),[dwCells,setDwCells]=j.useState(new Set),[pickMode,setPickMode]=j.useState("book"),[dwFunc,setDwFunc]=j.useState(null),[exhModel,setExhModel]=j.useState(null),[perfModel,setPerfModel]=j.useState(null),[recModel,setRecModel]=j.useState(null),[cowModel,setCowModel]=j.useState(null),[terrModel,setTerrModel]=j.useState(null),[gardModel,setGardModel]=j.useState(null),[workModel,setWorkModel]=j.useState(null),[retrModel,setRetrModel]=j.useState(null),[openStudModel,setOpenStudModel]=j.useState(null),[cafeBarModel,setCafeBarModel]=j.useState(null),[S,M]=j.useState(Ra),[E,P]=j.useState(null),[b,I]=j.useState(0),[N,G]=j.useState({}),[A,R]=j.useState(null),V=j.useRef(null),[D,$]=j.useState(null),[fmMode,setFmMode]=j.useState(!1),K=j.useRef(null),F=()=>{if(!K.current)return;const printWin=window.open("","_blank");const{capture:O,camera:L}=K.current;let ie;try{ie=O("png")}catch{printWin&&printWin.close();return}const he=new Image;he.onload=()=>{try{const pe=he.width,ve=he.height,De=pe/1920,prExtra=Math.max(0,dwActiveBookings.length-3)*22,Ne=Math.round((110+prExtra)*De),ze=document.createElement("canvas");ze.width=pe,ze.height=ve+Ne;const Re=ze.getContext("2d");if(Re.drawImage(he,0,0),L){const ut="#FFD167";dwActiveBookings.forEach(X=>{var we;try{const W=X.floor,Te=!DW_FUNCTIONS.includes(X.activity),ae=[],_e=[];for(const Q of X.cells||[])if(Te){const oe=ic(W,Q);if(oe){const[ue,,ee]=vc(oe,W);ae.push(ue),_e.push(ee)}}else{const[oe,ue]=Q.split("-").map(Number),[ee,,Ue]=ji(oe,ue,W);ae.push(ee),_e.push(Ue)}if(!ae.length)return;const ke=ae.reduce((Q,oe)=>Q+oe,0)/ae.length,je=_e.reduce((Q,oe)=>Q+oe,0)/_e.length,wt=ji(0,0,W)[1]+un+2.5,bt=new B(ke,wt,je).project(L);if(bt.z>1)return;const It=(bt.x+1)/2*pe,gt=-(bt.y-1)/2*ve;if(It<10||It>pe-10||gt<10||gt>ve-10)return;const qt=X.userName||"Booking",tn=X.activity||"",Qi=((we=Hi[W])==null?void 0:we.label)||`F${W}`,Vs=Math.round(13*De),er=Math.round(10*De),os=Math.round(8*De),zr=Math.round(17*De),Gs=Math.round(11*De);Re.font=`800 ${Vs}px system-ui, sans-serif`;const tr=Re.measureText(qt).width;Re.font=`500 ${er}px system-ui, sans-serif`;const qa=tn?Re.measureText(tn).width:0;Re.font=`700 ${os}px system-ui, sans-serif`;const Ws=Re.measureText(Qi).width,js=Math.max(tr,qa,Ws)+Gs*2,Xs=(1+(tn?1:0)+1)*zr+Gs*1.4,Za=It-js/2,Ys=gt-Xs-Math.round(10*De);Re.fillStyle="rgba(2,4,14,0.93)",Re.fillRect(Za,Ys,js,Xs),Re.strokeStyle=ut,Re.lineWidth=Math.max(1,Math.round(1.5*De)),Re.strokeRect(Za,Ys,js,Xs),Re.save(),Re.globalAlpha=.4,Re.strokeStyle=ut,Re.lineWidth=Math.max(1,Math.round(De)),Re.beginPath(),Re.moveTo(It,Ys+Xs),Re.lineTo(It,gt),Re.stroke(),Re.restore(),Re.textAlign="center",Re.shadowColor=ut,Re.shadowBlur=Math.round(8*De),Re.font=`800 ${Vs}px system-ui, sans-serif`,Re.fillStyle="#ffffff";let U=Ys+Gs+Vs;Re.fillText(qt,It,U),Re.shadowBlur=0,tn&&(U+=zr,Re.font=`500 ${er}px system-ui, sans-serif`,Re.fillStyle=ut,Re.fillText(tn,It,U)),U+=zr,Re.font=`700 ${os}px system-ui, sans-serif`,Re.fillStyle="rgba(255,255,255,0.45)",Re.fillText(Qi,It,U),Re.textAlign="left",Re.shadowBlur=0}catch{}})}Re.fillStyle="#FFF7E8",Re.fillRect(0,ve,pe,Ne),Re.fillStyle="#EF6646",Re.fillRect(0,ve,pe,Math.max(2,Math.round(2*De))),Re.fillStyle="rgba(58,69,80,0.15)",Re.fillRect(Math.round(pe*.5),ve+Math.round(16*De),Math.max(1,Math.round(De)),Ne-Math.round(28*De));const Ie=Math.round(32*De),Be=ve+Math.round(40*De),ct=pe-Ie;Re.textAlign="left",Re.font=`800 ${Math.round(22*De)}px "IBM Plex Mono", system-ui, sans-serif`,Re.fillStyle="#3A4550",Re.fillText("THIRD HOME WOLFSBURG",Ie,Be),Re.font=`500 ${Math.round(12*De)}px "IBM Plex Mono", system-ui, sans-serif`,Re.fillStyle="#4360B0",Re.fillText("THIRD HOME WOLFSBURG INTERFACE",Ie,Be+Math.round(24*De)),Re.font=`400 ${Math.round(11*De)}px "IBM Plex Mono", system-ui, sans-serif`,Re.fillStyle="#8A8577",Re.fillText(new Date().toLocaleDateString("en-GB",{year:"numeric",month:"long",day:"numeric"}),Ie,Be+Math.round(48*De)),Re.textAlign="right",Re.font=`700 ${Math.round(10*De)}px "IBM Plex Mono", system-ui, sans-serif`,Re.fillStyle="#8A8577",Re.fillText("BOOKING CONFIRMATION",ct,Be-Math.round(18*De));const prColW=[18,14,6],prHeaderRow="NAME".padEnd(prColW[0])+"ACTIVITY".padEnd(prColW[1])+"FLOOR".padEnd(prColW[2]);Re.textAlign="left",Re.font=`700 ${Math.round(10*De)}px "IBM Plex Mono", monospace`,Re.fillStyle="#8A8577";const prCharW=Re.measureText("0").width,prTableW=prHeaderRow.length*prCharW;Re.fillText(prHeaderRow,ct-prTableW,Be-Math.round(2*De)),Re.strokeStyle="rgba(58,69,80,0.2)",Re.lineWidth=Math.max(1,Math.round(De)),Re.beginPath(),Re.moveTo(ct-prTableW,Be+Math.round(4*De)),Re.lineTo(ct,Be+Math.round(4*De)),Re.stroke(),Re.font=`600 ${Math.round(13*De)}px "IBM Plex Mono", monospace`,dwActiveBookings.forEach((ut,X)=>{var Te;const we=((Te=Hi[ut.floor])==null?void 0:Te.label)||`F${ut.floor}`,prRow=(ut.userName||"").padEnd(prColW[0])+(ut.activity||"").padEnd(prColW[1])+we.padEnd(prColW[2]);Re.fillStyle="#3A4550",Re.fillText(prRow,ct-prTableW,Be+Math.round((18+X*22)*De))});if(printWin){const durl=ze.toDataURL("image/png",.95);printWin.document.write('<!doctype html><html><head><title>Third Home Wolfsburg</title><style>@page{size:landscape;margin:10mm}html,body{margin:0;height:100%;background:#FFFCF6}body{display:flex;align-items:center;justify-content:center}img{max-width:100%;max-height:100%;width:auto;height:auto;display:block}</style></head><body><img src="'+durl+'" onload="window.focus();window.print()"></body></html>'),printWin.document.close()}}catch(pe){console.error("export failed",pe),printWin&&printWin.close()}},he.src=ie},Y=E?S.find(me=>me.id===E):null,q=j.useMemo(()=>E&&Y?Y.cells.map(me=>{const[O,L]=me.split("-").map(Number);return ji(O,L,Y.floor)}):_.size>0?[..._].map(me=>{const[O,L]=me.split("-").map(Number);return ji(O,L,y)}):[],[_,y,E,Y]),re=me=>{a(me),f("iso")},Ee=me=>{f(me),me==="plan"&&o==="editor"&&(clearInterval(V.current),P(null),I(0),R(null))},Pe=(me,O,L)=>{M(ie=>ie.map(he=>{if(he.id!==me)return he;const pe={...he,roofEnabled:O,roofInflation:L};return gB(pe),pe}))},se=j.useMemo(()=>Y?MR(Y.cells,Y.floor):[],[E,S]),fe=me=>{const dwModel=({Exhibition:exhModel,Performance:perfModel,Recreation:recModel,"Co-Working":cowModel,Terraces:terrModel,Gardening:gardModel,Workshop:workModel,Retreat:retrModel,"Open Studios":openStudModel,"Cafe / Bar":cafeBarModel})[dwFunc];if(pickMode==="deploy"&&dwModel){const depthTiles=Math.max(1,Math.round(dwModel.size.depth/Rt)),widthTiles=Math.max(1,Math.round(dwModel.size.width/Rt)),[ce,cp]=me.split("-").map(Number),distE=Math.min(ce,uB-1-ce),distP=Math.min(cp,fB-1-cp),rotate=distE<distP,fpE=rotate?widthTiles:depthTiles,fpP=rotate?depthTiles:widthTiles,startE=Math.max(0,Math.min(ce,uB-fpE)),startP=Math.max(0,Math.min(cp,fB-fpP)),block=new Set;for(let de=0;de<fpE;de++)for(let dp=0;dp<fpP;dp++)block.add(`${startE+de}-${startP+dp}`);setDwCells(O=>O.has(me)&&O.size===block.size&&[...O].every(x=>block.has(x))?new Set:block);return}(pickMode==="deploy"?setDwCells:g)(O=>{const L=new Set(O);return L.has(me)?L.delete(me):L.add(me),L})},be=()=>g(new Set),Ce=me=>{w(me),g(new Set),setDwCells(new Set)},tt=me=>{clearInterval(V.current),P(me),I(0),R(null),f("iso")},it=()=>{clearInterval(V.current),P(null),I(0),R(null)},Ze=()=>{clearInterval(V.current);const me=se.length;let O=b;V.current=setInterval(()=>{O++,I(O),O>=me&&clearInterval(V.current)},550)},Fe=()=>{clearInterval(V.current),I(0)},ye=(me,O)=>{G(L=>({...L,[E]:{...L[E]||{},[me]:O}}))};j.useEffect(()=>{fetch("./model.json").then(me=>me.json()).then(me=>{e(me);const O={};me.statics.forEach(L=>O[L.layer]=!0),i(O)})},[]);const z=j.useMemo(()=>{if(!n)return[];const me={};return n.statics.forEach(O=>{me[O.layer]||(me[O.layer]=PAL[O.layer]?palHex(PAL[O.layer]):O.color)}),Object.entries(me).map(([O,L])=>({layer:O,color:L}))},[n]);const[dwNow,setDwNow]=j.useState(()=>Date.now());j.useEffect(()=>{const dwIv=setInterval(()=>setDwNow(Date.now()),15000);return()=>clearInterval(dwIv)},[]);const dwActiveBookings=j.useMemo(()=>S.filter(bk=>dwIsActive(bk,dwNow)),[S,dwNow]);const dwFadeMap=j.useMemo(()=>{const dwDeployed=dwActiveBookings.filter(bk=>DW_FUNCTIONS.includes(bk.activity)).map(bk=>({id:bk.id,t:Number((bk.id||"").split("_")[1])||0})).sort((a,b)=>b.t-a.t),map=new Map();return dwDeployed.forEach((bk,idx)=>map.set(bk.id,idx===0?0:1)),map},[dwActiveBookings]);j.useEffect(()=>{fetch("./roof_morph.json").then(me=>me.json()).then(me=>$(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./exhibition_model.json").then(me=>me.json()).then(me=>setExhModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./performance_model.json").then(me=>me.json()).then(me=>setPerfModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./recreation_model.json").then(me=>me.json()).then(me=>setRecModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./co-working_model.json").then(me=>me.json()).then(me=>setCowModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./terrace_model.json").then(me=>me.json()).then(me=>setTerrModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./gardening_model.json").then(me=>me.json()).then(me=>setGardModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./workshop_model.json").then(me=>me.json()).then(me=>setWorkModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./retreat_model.json").then(me=>me.json()).then(me=>setRetrModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./open-studios_model.json").then(me=>me.json()).then(me=>setOpenStudModel(me)).catch(()=>{})},[]);j.useEffect(()=>{fetch("./cafe-bar_model.json").then(me=>me.json()).then(me=>setCafeBarModel(me)).catch(()=>{})},[]);const fsRRef=j.useRef(r);j.useEffect(()=>{fsRRef.current=r},[r]);j.useEffect(()=>{setDwVisitedFloors(prev=>prev.has(r)?prev:new Set(prev).add(r))},[r]);j.useEffect(()=>{let fsBusy=!1;const fsKey=me=>{if(me.target.closest(".panel"))return;if(me.target.tagName==="INPUT"||me.target.tagName==="TEXTAREA")return;if(me.key!=="ArrowUp"&&me.key!=="ArrowDown")return;if(fsBusy)return;me.preventDefault();const fsCur=wR.indexOf(fsRRef.current)>=0?wR.indexOf(fsRRef.current):0,fsNext=me.key==="ArrowUp"?Math.min(fsCur+1,wR.length-1):Math.max(fsCur-1,0);if(fsNext===fsCur)return;s(wR[fsNext]),Ce(fsNext),fsBusy=!0,setTimeout(()=>{fsBusy=!1},700)};return window.addEventListener("keydown",fsKey),()=>window.removeEventListener("keydown",fsKey)},[]);const dwModels={Exhibition:exhModel,Performance:perfModel,Recreation:recModel,"Co-Working":cowModel,Terraces:terrModel,Gardening:gardModel,Workshop:workModel,Retreat:retrModel,"Open Studios":openStudModel,"Cafe / Bar":cafeBarModel};const le={viewer:"Drag to orbit · scroll to zoom · right-drag to pan",plan:"Plan view · scroll to zoom · drag to pan · no rotation",iso:"Iso view · drag to orbit · scroll to zoom · ↑/↓ to change floor · right-drag to pan",fixed:"Fixed viewpoint · scroll to zoom · right-drag to pan"},xe=o==="viewer"?u==="plan"?le.plan:le.fixed:o==="editor"?le[u]:le.viewer,Me=`${o}-${u}`,Ve="cyber",Gf=(fmMode?null:r)?-wR.indexOf(fmMode?null:r)*7:0;return k.jsxs(k.Fragment,{children:[k.jsx(DW_HeatFilterDefs,{},"heatdefs"),k.jsx(DarkFloorAmbience,{floorLabel:r},"dfa"),k.jsx(LoudFloorAmbience,{floorLabel:r},"lfa"),k.jsx(HotFloorAmbience,{floorLabel:r},"hfa"),k.jsx(FloorExperienceOverlay,{floorLabel:r},"fx"),k.jsxs("div",{className:"app","data-mode":o,"data-view":u,children:[k.jsx("div",{className:"canvas-wrap"+(DW_floorLabelToZoneId(r)==="floor5"?" dw-heat-active":""),children:k.jsxs(Uz,{shadows:!0,gl:{antialias:!0,preserveDrawingBuffer:!0},children:[k.jsx("color",{attach:"background",args:["#FFFCF6"]}),k.jsx("hemisphereLight",{intensity:.35,skyColor:"#FFF9EE",groundColor:"#E4DCCF"}),k.jsx("ambientLight",{intensity:.22}),k.jsx("directionalLight",{position:[300,400,300],intensity:1.2,castShadow:!0,"shadow-mapSize-width":2048,"shadow-mapSize-height":2048,"shadow-camera-near":1,"shadow-camera-far":2e3,"shadow-camera-left":-600,"shadow-camera-right":600,"shadow-camera-top":600,"shadow-camera-bottom":-600,"shadow-bias":-.001}),k.jsx("directionalLight",{position:[-260,180,-220],intensity:.29,color:"#E8EEF3"}),k.jsx(cB,{mode:o,viewMode:u},Me),k.jsx(wB,{captureRef:K}),o==="editor"&&!E&&y>=1&&y<=5&&(pickMode==="deploy"?!!dwFunc:y<=3)&&(pickMode!=="deploy"&&gc.has(y)?k.jsx(MB,{floor:y,sel:pickMode==="deploy"?dwCells:_,bookings:dwActiveBookings,onToggle:fe,scheme:Ve,noGlow:pickMode==="deploy"}):k.jsx(yB,{floor:y,sel:pickMode==="deploy"?dwCells:_,bookings:dwActiveBookings,onToggle:fe,scheme:Ve,noGlow:pickMode==="deploy"})),o==="editor"&&!E&&dwFunc==="Exhibition"&&dwCells.size>0&&exhModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:exhModel,activity:"Exhibition",fade:0},"exh-live"),(o==="editor"||o==="viewer")&&!E&&exhModel&&dwActiveBookings.filter(bk=>bk.activity==="Exhibition"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:exhModel,activity:"Exhibition",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Performance"&&dwCells.size>0&&perfModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:perfModel,activity:"Performance",fade:0},"perf-live"),(o==="editor"||o==="viewer")&&!E&&perfModel&&dwActiveBookings.filter(bk=>bk.activity==="Performance"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:perfModel,activity:"Performance",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Recreation"&&dwCells.size>0&&recModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:recModel,activity:"Recreation",fade:0},"rec-live"),(o==="editor"||o==="viewer")&&!E&&recModel&&dwActiveBookings.filter(bk=>bk.activity==="Recreation"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:recModel,activity:"Recreation",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Co-Working"&&dwCells.size>0&&cowModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:cowModel,activity:"Co-Working",fade:0},"cow-live"),(o==="editor"||o==="viewer")&&!E&&cowModel&&dwActiveBookings.filter(bk=>bk.activity==="Co-Working"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:cowModel,activity:"Co-Working",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Terraces"&&dwCells.size>0&&terrModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:terrModel,activity:"Terraces",fade:0},"terr-live"),(o==="editor"||o==="viewer")&&!E&&terrModel&&dwActiveBookings.filter(bk=>bk.activity==="Terraces"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:terrModel,activity:"Terraces",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Gardening"&&dwCells.size>0&&gardModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:gardModel,activity:"Gardening",fade:0},"gard-live"),(o==="editor"||o==="viewer")&&!E&&gardModel&&dwActiveBookings.filter(bk=>bk.activity==="Gardening"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:gardModel,activity:"Gardening",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Workshop"&&dwCells.size>0&&workModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:workModel,activity:"Workshop",fade:0},"work-live"),(o==="editor"||o==="viewer")&&!E&&workModel&&dwActiveBookings.filter(bk=>bk.activity==="Workshop"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:workModel,activity:"Workshop",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Retreat"&&dwCells.size>0&&retrModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:retrModel,activity:"Retreat",fade:0},"retr-live"),(o==="editor"||o==="viewer")&&!E&&retrModel&&dwActiveBookings.filter(bk=>bk.activity==="Retreat"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:retrModel,activity:"Retreat",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Open Studios"&&dwCells.size>0&&openStudModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:openStudModel,activity:"Open Studios",fade:0},"openstud-live"),(o==="editor"||o==="viewer")&&!E&&openStudModel&&dwActiveBookings.filter(bk=>bk.activity==="Open Studios"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:openStudModel,activity:"Open Studios",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&!E&&dwFunc==="Cafe / Bar"&&dwCells.size>0&&cafeBarModel&&k.jsx(ExhibitionPreview,{cells:dwCells,floor:y,model:cafeBarModel,activity:"Cafe / Bar",fade:0},"cafebar-live"),(o==="editor"||o==="viewer")&&!E&&cafeBarModel&&dwActiveBookings.filter(bk=>bk.activity==="Cafe / Bar"&&(o==="viewer"||bk.floor===y)).map(bk=>k.jsx(ExhibitionPreview,{cells:new Set(bk.cells),floor:bk.floor,model:cafeBarModel,activity:"Cafe / Bar",userName:bk.userName,fade:o==="viewer"?dwFadeMap.get(bk.id)||0:0},bk.id)),o==="editor"&&Y&&E&&k.jsx(LE,{booking:Y,wallTypesMap:N[E]||{},activeWallId:A,onSelectWall:R,animStep:b,roofEnabled:Y.roofEnabled??!1,roofMorphData:D,roofInflation:Y.roofInflation??0},E),o==="viewer"&&dwActiveBookings.filter(me=>!DW_FUNCTIONS.includes(me.activity)).map(me=>k.jsx(LE,{booking:me,wallTypesMap:N[me.id]||{},activeWallId:null,onSelectWall:()=>{},animStep:999,roofEnabled:me.roofEnabled??!1,roofMorphData:D,roofInflation:me.roofInflation??0},me.id)),n&&k.jsx(aB,{data:n,visible:t,activeFloor:o==="viewer"?null:fmMode?null:r,focusLayers:null,mode:o,hovered:p,onHover:v,viewerOpacity:1,colorOverride:null}),o==="editor"&&!E&&dwActiveBookings.filter(bk=>bk.floor===y).length>0&&k.jsx(TB,{bookings:dwActiveBookings.filter(bk=>bk.floor===y),glowFill:"#B0431E",glowEdge:"#FFD167"})]})}),n&&(o==="viewer"||o==="editor")&&k.jsx(kB,{layers:z,visible:t,setVisible:i,activeFloor:r,activeFloorIdx:y,setActiveFloor:s,onFloorSelect:Ce,collapsed:d,selCells:_,onClearCells:()=>g(new Set),dwCells,onClearDwCells:()=>setDwCells(new Set),setPickMode,pickMode,dwFunc,setDwFunc,onConfirmBooking:bk=>{IE(bk),M(Ra())},mode:o,onSwitchMode:re,bookings:S,now:dwNow,dwModels,dwVisitedCount:dwVisitedFloors.size,dwAllFloorsVisited:wR.every(fl=>dwVisitedFloors.has(fl))}),o==="editor"&&n&&k.jsx(IB,{floor:y,onFloor:Ce,sel:_,onToggle:fe,onClearSel:be,bookings:S,onBookings:M,assemblyId:E,assemblyWalls:se,assemblyStep:b,wallTypes:N[E]||{},activeWallId:A,onStartAssembly:tt,onCloseAssembly:it,onPlayAssembly:Ze,onResetAssembly:Fe,onSetWallType:ye,onSelectWall:R,roofMorphData:D,onSetRoof:Pe}),!n&&k.jsxs("div",{className:"loading",children:[k.jsx("div",{className:"loading-dot"}),"Loading model…"]}),o!=="viewer"&&k.jsx(OB,{viewMode:u,setViewMode:Ee}),o==="editor"&&k.jsx("button",{className:`fullmodel-toggle${fmMode?" active":""}`,onClick:()=>setFmMode(z=>!z),children:"Full Model"}),o==="viewer"&&k.jsxs("div",{className:"viewer-export-panel",children:[k.jsx("div",{className:"viewer-export-title",children:"Viewpoint"}),k.jsxs("div",{className:"viewer-export-btns",children:[k.jsx("button",{className:`viewer-export-btn${u==="iso"?" active":""}`,onClick:()=>Ee("iso"),children:"View 1"}),k.jsx("button",{className:`viewer-export-btn${u==="iso2"?" active":""}`,onClick:()=>Ee("iso2"),children:"View 2"})]}),k.jsx("div",{className:"viewer-export-title",children:"Export View"}),k.jsx("div",{className:"viewer-export-btns",children:k.jsx("button",{className:"viewer-export-btn",onClick:()=>F(),children:"PDF"})})]}),k.jsx("div",{className:"hint",children:xe})]})]})}ix(document.getElementById("root")).render(k.jsx(zB,{}));
