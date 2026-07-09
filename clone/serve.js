@@ -14,6 +14,8 @@ const types = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".woff2": "font/woff2",
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
 };
 
 http
@@ -31,7 +33,27 @@ http
         return res.end("Not found");
       }
       const ext = path.extname(filePath).toLowerCase();
-      res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream" });
+      const contentType = types[ext] || "application/octet-stream";
+      const range = req.headers.range;
+      const match = range && /bytes=(\d*)-(\d*)/.exec(range);
+      if (match) {
+        const total = data.length;
+        const start = match[1] ? parseInt(match[1], 10) : 0;
+        const end = match[2] ? parseInt(match[2], 10) : total - 1;
+        const chunk = data.slice(start, end + 1);
+        res.writeHead(206, {
+          "Content-Type": contentType,
+          "Content-Length": chunk.length,
+          "Content-Range": `bytes ${start}-${end}/${total}`,
+          "Accept-Ranges": "bytes",
+        });
+        return res.end(chunk);
+      }
+      res.writeHead(200, {
+        "Content-Type": contentType,
+        "Content-Length": data.length,
+        "Accept-Ranges": "bytes",
+      });
       res.end(data);
     });
   })
