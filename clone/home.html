@@ -156,6 +156,18 @@
         transform: rotateY(180deg);
       }
 
+      /* Gate click targets by the logical open/closed state (applied instantly)
+         rather than the animated 3D orientation, so a click mid-flip can't land
+         on the still-facing front face and re-close the card before the back
+         (and its "Let's Begin!" button) becomes reachable. */
+      .card.open .card-front {
+        pointer-events: none;
+      }
+
+      .card:not(.open) .card-back {
+        pointer-events: none;
+      }
+
       .card-face {
         position: absolute;
         inset: 0;
@@ -461,9 +473,10 @@
         cardsEl.appendChild(card);
 
         const flip = card.querySelector(".card-flip");
+        const front = card.querySelector(".card-front");
+        const back = card.querySelector(".card-back");
         const beginBtn = card.querySelector(".begin-btn");
-        const toggle = () => {
-          const willOpen = !card.classList.contains("open");
+        const setOpen = (willOpen) => {
           if (willOpen) {
             cardsEl.querySelectorAll(".card.open").forEach((openCard) => {
               if (openCard === card) return;
@@ -475,7 +488,13 @@
           flip.setAttribute("aria-expanded", String(willOpen));
           updateCompact();
         };
-        flip.addEventListener("click", toggle);
+        const toggle = () => setOpen(!card.classList.contains("open"));
+        // Separate, face-scoped handlers (instead of one shared listener on the
+        // flip container) so pointer-events gating above actually decides which
+        // face receives the click, rather than the click always bubbling up to
+        // a single toggle() regardless of which face is currently reachable.
+        front.addEventListener("click", () => setOpen(true));
+        back.addEventListener("click", () => setOpen(false));
         flip.addEventListener("keydown", (e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
